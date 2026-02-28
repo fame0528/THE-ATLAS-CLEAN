@@ -5,14 +5,13 @@
 
 import { listAgents, enqueueTask, getPendingTasks } from './openclaw';
 import { getDB } from './db';
+import { getAuditLog } from './audit';
 
 /**
  * Send a task to the OpenClaw gateway (fire-and-forget)
  * Also creates local task record if needed (but route already does)
  */
 export async function sendTask(agentId: string, payload: any): Promise<void> {
-  // The low-level enqueueTask expects (agentId, task string, priority)
-  // We need to serialize payload as task string. Use JSON.
   const taskString = JSON.stringify(payload);
   await enqueueTask(agentId, taskString, 'normal');
 }
@@ -23,9 +22,7 @@ export async function sendTask(agentId: string, payload: any): Promise<void> {
  */
 export async function getQueue() {
   const rawLines = await getPendingTasks();
-  // Parse lines like: [timestamp] agent: TASK: [PRIORITY] {json?}
   const tasks = rawLines.map((line, idx) => {
-    // Simple parse: after "TASK: [" we have priority then space then rest is task JSON
     const match = line.match(/TASK:\s+\[([A-Z]+)\]\s+(.*)/s);
     if (match) {
       const priority = match[1].toLowerCase() as 'low' | 'normal' | 'high';
@@ -38,10 +35,9 @@ export async function getQueue() {
           task,
           priority,
           status: 'pending' as const,
-          createdAt: line.substring(1, 20), // extract timestamp part
+          createdAt: line.substring(1, 20),
         };
       } catch {
-        // not JSON, treat as plain text
         return {
           id: `task-${idx}`,
           agentId: 'unknown',
@@ -62,4 +58,11 @@ export async function getQueue() {
     };
   });
   return tasks;
+}
+
+/**
+ * Get recent audit logs (wrapper around audit module)
+ */
+export async function getAuditLogs(limit = 50) {
+  return getAuditLog(limit);
 }
