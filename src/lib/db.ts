@@ -203,6 +203,21 @@ class AtlasDB {
   getMemoryIndexMeta(): DBMemoryMeta {
     return this.data.memory_index_meta;
   }
+
+  /** Health check summary */
+  health() {
+    const agents = this.getAgents();
+    const tasks = this.getTasks(100);
+    const activeAgents = agents.filter(a => a.state === 'running' || a.state === 'idle').length;
+    const queuedTasks = tasks.filter(t => t.status === 'queued').length;
+    const runningTasks = tasks.filter(t => t.status === 'running').length;
+    return {
+      agents: { total: agents.length, active: activeAgents },
+      tasks: { total: tasks.length, queued: queuedTasks, running: runningTasks },
+      memory: this.getMemoryIndexMeta(),
+      uptime: process.uptime ? process.uptime() : null,
+    };
+  }
 }
 
 // Singleton instance

@@ -6,8 +6,8 @@
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
-import { readFile, writeFile, mkdir } from 'fs/promises';
-import { existsSync, readdir } from 'fs';
+import { readFile, writeFile, mkdir, readdir } from 'fs/promises';
+import { existsSync, stat } from 'fs';
 import path from 'path';
 
 const execAsync = promisify(exec);
@@ -21,12 +21,12 @@ function validatePath(filePath: string): void {
 
 /**
  * Get gateway status via `openclaw gateway status`
- * Returns parsed JSON with uptime, pid, memory, version
+ * Returns raw JSON string
  */
-export async function getGatewayStatus(): Promise<any> {
+export async function getGatewayStatus(): Promise<string> {
   try {
     const { stdout } = await execAsync('openclaw gateway status', { timeout: 10000 });
-    return JSON.parse(stdout);
+    return stdout;
   } catch (error: any) {
     throw new Error(`Gateway status failed: ${error.message}`);
   }
@@ -34,14 +34,15 @@ export async function getGatewayStatus(): Promise<any> {
 
 /**
  * List agents via `openclaw agents list --json`
+ * Returns raw JSON string
  */
-export async function listAgents(): Promise<any[]> {
+export async function listAgents(): Promise<string> {
   try {
     const { stdout } = await execAsync('openclaw agents list --json', { timeout: 10000 });
-    return JSON.parse(stdout);
+    return stdout;
   } catch (error: any) {
     console.warn('listAgents fallback:', error.message);
-    return [];
+    return '[]';
   }
 }
 
@@ -92,7 +93,7 @@ export async function enqueueTask(agentId: string, task: string, priority: 'low'
 }
 
 /**
- * Search memory (local grep fallback if gateway not available)
+ * Search memory
  */
 export async function memorySearch(query: string, limit: number = 20): Promise<string> {
   try {
@@ -131,6 +132,21 @@ export async function stopGateway(): Promise<{ stdout: string; stderr: string }>
   }
 }
 
+/**
+ * Create a savepoint (memory index) only
+ */
+export async function savepoint(): Promise<{ stdout: string; stderr: string }> {
+  try {
+    const { stdout } = await execAsync('openclaw memory index --savepoint', { timeout: 30000 });
+    return { stdout, stderr: '' };
+  } catch (error: any) {
+    return { stdout: '', stderr: error.message };
+  }
+}
+
+/**
+ * Create a savepoint and then stop the gateway
+ */
 export async function savepointAndStop(): Promise<{ stdout: string; stderr: string }> {
   try {
     const { stdout } = await execAsync('openclaw memory index --savepoint', { timeout: 30000 });
@@ -141,6 +157,9 @@ export async function savepointAndStop(): Promise<{ stdout: string; stderr: stri
   }
 }
 
+/**
+ * Trigger memory indexing (without savepoint)
+ */
 export async function indexMemory(): Promise<{ count: number }> {
   try {
     const { stdout } = await execAsync('openclaw memory index', { timeout: 30000 });
@@ -304,6 +323,3 @@ export async function getHealthData() {
 
   return results;
 }
-
-// Alias for backwards compatibility
-export const savepoint = savepointAndStop;
