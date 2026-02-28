@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import type { SystemMetrics, Agent } from '@/types';
 import { getToken, setToken } from '@/lib/token';
+import { CardSkeleton, TableRowSkeleton } from '@/components/Skeletons';
 
 export const dynamic = 'force-dynamic';
 
@@ -105,8 +106,47 @@ export default function DashboardPage() {
     }
   }
 
-  if (loading) {
-    return <div className="p-8">Loading ATLAS...</div>;
+  if (loading || !metrics) {
+    return (
+      <div className="space-y-6">
+        <div className="flex justify-between items-center">
+          <h1 className="text-3xl font-bold">🧭 THE ATLAS</h1>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-gray-400">Token:</label>
+              <div className="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 text-sm w-48 bg-gray-200 animate-pulse"></div>
+              <button className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 opacity-50 cursor-not-allowed">Save</button>
+            </div>
+          </div>
+        </div>
+        <p className="text-gray-400">Swarm Control Panel — Local-First Dashboard</p>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+        <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow">
+          <h2 className="text-xl font-semibold mb-4">Agents</h2>
+          <table className="w-full table-auto">
+            <thead>
+              <tr className="border-b">
+                <th className="text-left p-2">ID</th>
+                <th className="text-left p-2">Role</th>
+                <th className="text-left p-2">Status</th>
+                <th className="text-left p-2">Last Message</th>
+                <th className="text-left p-2">Workspace</th>
+              </tr>
+            </thead>
+            <tbody>
+              <TableRowSkeleton />
+              <TableRowSkeleton />
+              <TableRowSkeleton />
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
   }
 
   if (!metrics) {
