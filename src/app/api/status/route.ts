@@ -23,7 +23,7 @@ export async function GET(request: NextRequest) {
     const proxyOnline = gatewayOnline
     const connectedAgents = health.agents?.total || 0
 
-    const memoryProvider = health.memory?.provider || 'local'
+    const memoryProvider: MemoryHealth['provider'] = (health.memory?.provider as MemoryHealth['provider']) || 'local';
     const indexStatus: MemoryHealth['indexStatus'] = health.memory?.documentCount > 0 ? 'healthy' : 'unknown'
     const lastIndexTime = health.memory?.lastIndexed ? new Date(health.memory.lastIndexed) : null
     const totalDocuments = health.memory?.documentCount || 0
