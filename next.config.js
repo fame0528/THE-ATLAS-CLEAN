@@ -1,7 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // Minimal config for THE ATLAS
-  // Add custom config here if needed
+  experimental: {
+    serverComponentsExternalPackages: ['better-sqlite3'],
+  },
+  env: {
+    NEXT_PUBLIC_ATLAS_TOKEN: process.env.ATLAS_TOKEN,
+  },
 };
 
 module.exports = nextConfig;
