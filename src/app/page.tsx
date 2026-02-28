@@ -1,6 +1,37 @@
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
+
 export default function Home() {
+  const [status, setStatus] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  const fetchStatus = async () => {
+    try {
+      const res = await fetch('/api/status')
+      if (res.ok) {
+        const data = await res.json()
+        setStatus(data.data)
+      }
+    } catch (e) {
+      // ignore errors, show placeholder
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchStatus()
+    const interval = setInterval(fetchStatus, 10000)
+    return () => clearInterval(interval)
+  }, [])
+
+  const gatewayStatus = status?.gateway
+  const agentsCount = status?.proxy?.connectedAgents || 0
+  const memoryDocs = status?.memory?.totalDocuments || 0
+  const queueCount = status?.queue?.deliveryQueueCount || 0
+
   return (
-    <div className="space-y-6">
+    <div className="min-h-screen bg-gray-900 text-gray-100 p-6">
       <header className="mb-8">
         <h1 className="text-3xl font-bold mb-2">THE ATLAS <span className="text-lg font-normal text-gray-400">Clean Rebuild</span></h1>
         <p className="text-gray-400">Swarm Control Panel — Local-First Dashboard</p>
@@ -9,10 +40,23 @@ export default function Home() {
       <section>
         <h2 className="text-2xl font-semibold mb-4">System Status</h2>
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <StatusCard title="Gateway" status="unknown" />
-          <StatusCard title="Agents" status="0 online" />
-          <StatusCard title="Memory Index" status="idle" />
-          <StatusCard title="Queue Depth" status="0" />
+          <StatusCard
+            title="Gateway"
+            status={loading ? 'loading...' : gatewayStatus?.online ? 'Online' : 'Offline'}
+            subtitle={gatewayStatus?.version}
+          />
+          <StatusCard
+            title="Agents"
+            status={loading ? '...' : `${agentsCount} connected`}
+          />
+          <StatusCard
+            title="Memory Index"
+            status={loading ? '...' : `${memoryDocs} docs`}
+          />
+          <StatusCard
+            title="Queue Depth"
+            status={loading ? '...' : queueCount}
+          />
         </div>
       </section>
 
@@ -36,11 +80,12 @@ export default function Home() {
   );
 }
 
-function StatusCard({ title, status }: { title: string; status: string | number }) {
+function StatusCard({ title, status, subtitle }: { title: string; status: string; subtitle?: string }) {
   return (
     <div className="bg-gray-800 rounded-lg p-4 border border-gray-700">
       <h3 className="text-sm text-gray-400 uppercase tracking-wide">{title}</h3>
       <p className="text-2xl font-bold mt-2">{status}</p>
+      {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
     </div>
   );
 }
@@ -52,7 +97,7 @@ function ModuleCard({ title, status, assignee, href }: { title: string; status: 
     error: 'text-red-500',
   };
   const color = statusColors[status] || 'text-gray-500';
-  
+
   return (
     <div className={`bg-gray-800 rounded-lg p-4 border ${href ? 'border-gray-700 hover:border-blue-500 transition-colors cursor-pointer' : 'border-gray-700'}`}>
       <h3 className="font-semibold">{title}</h3>
@@ -60,9 +105,9 @@ function ModuleCard({ title, status, assignee, href }: { title: string; status: 
       <p className="text-xs text-gray-500 mt-2">Owner: {assignee}</p>
       {href && (
         <div className="mt-3">
-          <a href={href} className="text-blue-400 hover:underline text-sm">
+          <Link href={href} className="text-blue-400 hover:underline text-sm">
             Open →
-          </a>
+          </Link>
         </div>
       )}
     </div>

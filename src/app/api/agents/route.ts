@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = getDB()
-    const agents = db.getAgents()
+    const agents = db.getAgents() as any[]
 
     const agentInfos: AgentInfo[] = agents.map(a => ({
       id: a.id,

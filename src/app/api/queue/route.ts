@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const db = getDB()
-    const tasks = db.getTasks(1000)
+    const tasks = db.getTasks(1000) as any[]
     const queued = tasks.filter(t => t.status === 'queued')
     const lastCompleted = tasks.find(t => t.status === 'completed')
 
