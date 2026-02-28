@@ -24,6 +24,7 @@ export default function Home() {
           <ModuleCard title="OpenClaw Adapter" status="implemented" assignee="Hermes" />
           <ModuleCard title="Telemetry" status="implemented" assignee="Hyperion" href="/dashboard/telemetry" />
           <ModuleCard title="Ops/Cron" status="pending" assignee="Kronos" />
+          <ModuleCard title="Task Queue" status="implemented" assignee="Kronos" href="/dashboard/tasks" />
           <ModuleCard title="UX Polish" status="pending" assignee="Prometheus" />
         </div>
       </section>

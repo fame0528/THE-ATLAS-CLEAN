@@ -29,7 +29,7 @@ If remote has existing content, pull and merge first.
 | **Hyperion** | Telemetry metrics collection (gateway uptime, agent count, queue depth) + dashboard cards | ✅ COMPLETE | ✅ getStatus() action added, /api/status now returns real queue stats, page displays dynamic numbers. |
 | **Kronos** | Cron/heartbeat integration (auto-sync to nexus bridge, periodic WAL flush) | ✅ COMPLETE | ✅ Created src/lib/cron.ts (heartbeat+bridge sync), integrated into layout.tsx (server-side start). |
 | **Prometheus** | UX polish: error boundaries, loading states, dark mode consistency, responsive layout | ✅ COMPLETE | ✅ Created ErrorBoundary.tsx, integrated into layout.tsx; created loading.tsx skeleton; added cron start guard; responsive grid already in place. |
-| **Epimetheus** | Finalize API.md + README with examples, install troubleshooting, security hardening guide | IN_PROGRESS | API.md drafted. Need examples in curl, common errors, production checklist. |
+| **Epimetheus** | Finalize API.md + README with examples, install troubleshooting, security hardening guide | ✅ COMPLETE | ✅ Added curl examples, error code reference, troubleshooting section to README, security guide already in SECURITY.md. |
 
 ---
 
