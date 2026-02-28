@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDB } from '@/lib/db';
 import { sendTask as gatewaySendTask, getQueue as gatewayGetQueue } from '@/lib/openclaw-adapter';
+import { logAction } from '@/lib/audit';
 
 // GET /api/tasks
 // Returns recent tasks from local DB
@@ -18,6 +19,9 @@ export async function GET() {
 // POST /api/tasks
 // Enqueue a new task for an agent
 export async function POST(request: NextRequest) {
+  const token = request.headers.get('X-ATLAS-TOKEN');
+  const userId = token ? token.slice(0, 8) : 'anonymous';
+
   try {
     const body = await request.json();
     const { agent_id, payload } = body;
@@ -44,8 +48,22 @@ export async function POST(request: NextRequest) {
       db.updateTaskStatus(taskId, 'error', err.message);
     });
 
+    // Audit log (fire and forget)
+    logAction('task_enqueued', userId, {
+      endpoint: '/api/tasks',
+      method: 'POST',
+      taskId,
+      agent_id,
+    }, 'success').catch(err => console.error('Audit failed:', err));
+
     return NextResponse.json({ taskId, status: 'queued' });
-  } catch (error) {
+  } catch (error: any) {
+    // Audit log for failure
+    logAction('task_enqueued', userId, {
+      endpoint: '/api/tasks',
+      method: 'POST',
+    }, 'error', error.message).catch(() => {});
+
     console.error('Task creation failed:', error);
     return NextResponse.json({ error: 'Failed' }, { status: 500 });
   }

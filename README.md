@@ -1,136 +1,141 @@
-# THE ATLAS (Clean Rebuild)
+# THE ATLAS — Clean Rebuild
 
-Local-first mission control dashboard for the OpenClaw swarm. Built with Next.js 15, TypeScript, Tailwind, and SQLite.
+Local-first control panel for the 11-agent swarm. Built with Next.js, TypeScript, and Tailwind. Zero legacy code, zero external dependencies beyond local filesystem.
 
 ## Features
 
-- Real-time agent status and heartbeat monitoring
-- Task queue visualization and enqueue
-- Memory search (OpenClaw integration)
-- Quick actions behind authentication (restart gateway, savepoint-stop, index memory)
-- Full audit logging for all sensitive operations
-- Clean, dark UI optimized for long monitoring sessions
-- Live telemetry charts (system health, queue depth)
-- Error boundaries and loading states throughout
-- Rate limiting and path validation (Ares security)
+- **Agents Dashboard** — Real-time view of all agents, their status, and last activity
+- **Task Queue** — Enqueue tasks for agents, track completion
+- **Memory Search** — Search across MEMORY.md and daily notes (`memory/*.md`)
+- **Telemetry** — System metrics, DB health, gateway status
+- **OpenClaw Integration** — Adapter for communication with OpenClaw gateway
+- **Security** — Token auth (`X-ATLAS-TOKEN`), rate limiting, audit logging
+- **Local-first** — All data stored in `./data/` JSON files; no external DB required
 
-## Quickstart
+## Quick Start
 
-```bash
-# Install dependencies
-npm install
+1. **Clone and install**
+   ```bash
+   git clone https://github.com/fame0528/THE-ATLAS-CLEAN.git
+   cd THE-ATLAS-CLEAN
+   npm install
+   ```
 
-# Copy env template
-cp .env.local.example .env.local
-# Edit .env.local and set a strong ATLAS_TOKEN
+2. **Configure environment**
+   Copy `.env.local.example` to `.env.local` and set:
+   ```env
+   ATLAS_TOKEN=your-secret-256-bit-token
+   NEXT_PUBLIC_ATLAS_TOKEN=your-secret-256-bit-token  # same value, exposed to browser for API calls
+   OPENCLAW_GATEWAY=http://localhost:3333  # optional, default
+   ```
 
-# Run dev server
-npm run dev
+3. **Configure OpenClaw gateway**
+   Ensure OpenClaw gateway is running with matching `ATLAS_TOKEN` in its config.
+
+4. **Run development server**
+   ```bash
+   npm run dev
+   ```
+   Open [http://localhost:3050](http://localhost:3050)
+
+5. **Build for production**
+   ```bash
+   npm run build
+   npm start
+   ```
+
+## Project Structure
+
+```
+src/
+├── app/
+│   ├── api/
+│   │   ├── agents/route.ts      # GET agents list
+│   │   ├── memory/search/route.ts  # GET memory search
+│   │   ├── metrics/route.ts     # GET telemetry metrics
+│   │   └── tasks/route.ts       # GET/POST task queue
+│   ├── dashboard/
+│   │   ├── agents/page.tsx      # Agents UI
+│   │   ├── memories/page.tsx    # Memory search UI
+│   │   ├── telemetry/page.tsx   # Metrics UI
+│   │   └── tasks/page.tsx       # Task queue UI
+│   ├── layout.tsx
+│   └── page.tsx                 # Homepage module overview
+├── lib/
+│   ├── audit.ts                 # File-based audit logger
+│   ├── db.ts                    # JSON database wrapper
+│   ├── openclaw-adapter.ts      # OpenClaw gateway client
+│   └── rate-limit.ts            # In-memory sliding window rate limiter
+├── middleware.ts                # Auth + rate limiting + audit
+└── types/
+    └── agent.ts                 # Agent type definitions
 ```
 
-Open http://localhost:3050
+## API Reference
 
-## Build
+All API routes under `/api/*` require the header `X-ATLAS-TOKEN` (value from `.env.local`). Rate limits: 10 req/min for reads, 5 req/min for writes.
 
-```bash
-npm run build
-npm start
-```
+### Endpoints
 
-## Architecture
-
-- Next.js App Router (React 19)
-- SQLite via better-sqlite3 for structured data
-- Tailwind CSS v4 for styling
-- Auth via static token in `X-ATLAS-Token` header
-- All writes require token; reads are public for now
-
-## Data
-
-- Database stored in `./data/atlas.db` (gitignored)
-- No runtime state in git
-- Audit logs retained indefinitely
-- Memory index metadata tracked in DB
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/agents` | GET | List all agents with status |
+| `/api/memory/search?q=query` | GET | Search memory files |
+| `/api/metrics` | GET | System telemetry |
+| `/api/tasks` | GET | List recent tasks |
+| `/api/tasks` | POST | Create new task `{ agent_id, payload }` |
 
 ## Security
 
-See SECURITY.md.
+- **Authentication**: All API routes protected by `X-ATLAS-TOKEN`. Set in `.env.local` and match OpenClaw gateway config.
+- **Rate Limiting**: Sliding window in-memory. Read endpoints: 10/min. Write endpoints: 5/min.
+- **Audit Logging**: All API requests logged to `./data/audit/audit.log` (append-only JSON lines).
+- **Path Allowlist**: File operations restricted to `C:\Users\spenc\.openclaw` (Windows) or appropriate host path.
 
-## API
+## Data Storage
 
-See API.md.
+- **Local JSON DB**: `./data/atlas.json` stores agents, tasks, audit logs, memory index metadata.
+- **Audit Logs**: `./data/audit/audit.log`
+- **No external DB required** — fully local-first.
 
-## Agent Contributions
+## OpenClaw Gateway Integration
 
-This MVP includes contributions from multiple agents:
+The adapter (`src/lib/openclaw-adapter.ts`) speaks to the OpenClaw gateway on port 3333 (default). It supports:
 
-- **Hermes** — OpenClaw gateway adapter (health, agents, tasks)
-- **Mnemosyne** — Memory search integration
-- **Ares** — Security hardening (rate limiting, path validation)
-- **Kronos** — Ops indicators (cron status, agent health, system score)
-- **Hyperion** — Telemetry dashboard (MetricsPanel, ChartWidget)
-- **Prometheus** — UX polish (loading, error boundaries)
-- **Epimetheus** — Documentation
+- `GET /agents` — list agents
+- `GET /status` — gateway health
+- `POST /gateway/restart` — restart daemon
+- `POST /gateway/stop` — stop daemon
+- `POST /gateway/savepoint` — create checkpoint
+- `POST /queue` — enqueue task
+- `GET /queue` — get queue status
+- `GET /memory/search` — memory search (forwarded)
+- `GET /audit/logs` — fetch audit logs
 
-## Status
+## Agent Workflow
 
-MVP in progress. Expected completion: 2026-02-28.
-
-**Current progress:** 9/15 tasks complete (~2500 LOC).
-
-## Development
-
-```bash
-# Type check
-npm run typecheck
-
-# Lint
-npm run lint
-
-# Build
-npm run build
-```
-
-TypeScript strict mode enforced. Zero errors allowed.
-
-## Troubleshooting
-
-### `openclaw` command not found
-- Ensure OpenClaw is installed and in your PATH.
-- Verify with `openclaw --version`.
-- If using the Node.js package globally: `npm install -g openclaw`.
-
-### Gateway status returns `{ status: 'unknown' }`
-- Check that the OpenClaw gateway is running: `openclaw gateway status`.
-- Start it: `openclaw gateway start`.
-
-### API 401 Unauthorized
-- Confirm `ATLAS_TOKEN` in `.env.local` matches header.
-- Header must be exactly `X-ATLAS-TOKEN: your-token`.
-- No quotes, no extra spaces.
-
-### TypeScript errors after clone
-- Delete `node_modules` and `.next`, then run `npm install` again.
-- Ensure Node.js version >= 18.
-
-### Port 3050 already in use
-- Change dev port in `package.json`: `"dev": "next dev --port 3051"`.
-- Or kill the process using 3050.
-
-### Logs not appearing
-- Audit logger writes to `logs/audit.log`; ensure `logs/` is writable.
-- Directory created automatically on first write.
+1. Agents (researchor, monitor, reporter, etc.) run in their own workspaces under `workspace-mercury/agents/`.
+2. They register by creating a `SESSION-STATE.md` file. The adapter polls the gateway to discover them.
+3. Tasks are enqueued via `/api/tasks` → forwarded to gateway → dispatched to agents.
+4. Agents update their `SESSION-STATE.md` with progress; dashboard polls `/api/agents` to reflect status changes.
 
 ## Deployment
 
-Built for localhost (3050) only. For remote access, set up reverse proxy with TLS and restrict by IP.
+- **Port**: 3050 (configurable via `--port`)
+- **Node**: v18+ recommended
+- **Production**: Set `NODE_ENV=production`, run `npm run build` then `npm start`.
+- **Reverse Proxy**: Nginx/Apache can proxy to port 3050.
 
-Never expose `ATLAS_TOKEN` in client logs or browser console.
+## Development Notes
+
+- **Zero code reuse**: This is a greenfield rebuild. No legacy files, no copy-paste from old project.
+- **FLAWLESS protocol**: All changes must pass `npm run type-check` (TypeScript 0 errors) before committing.
+- **GUARDIAN checkpoints**: File reading batch size 1–9999; never load full large files into memory.
 
 ## License
 
-Private — Not for redistribution.
+Private — for team use only.
 
 ---
 
-**Built with ECHO v1.3.4 Flawless Protocol** 🔨
+**Built by Mercury (Atlas Team).** 💎

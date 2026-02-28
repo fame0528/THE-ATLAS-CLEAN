@@ -1,50 +1,44 @@
-'use client'
+'use client';
 
-import React, { Component, ErrorInfo, ReactNode } from 'react'
+import { Component, ReactNode } from 'react';
 
 interface Props {
-  children: ReactNode
-  fallback?: ReactNode
+  children: ReactNode;
+  fallback?: ReactNode;
 }
 
 interface State {
-  hasError: boolean
-  error?: Error
+  hasError: boolean;
+  error?: Error;
 }
 
 export default class ErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
-    super(props)
-    this.state = { hasError: false }
+    super(props);
+    this.state = { hasError: false };
   }
 
   static getDerivedStateFromError(error: Error): State {
-    return { hasError: true, error }
+    return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
-    console.error('ErrorBoundary caught:', error, errorInfo)
-    // Could send to monitoring service
+  componentDidCatch(error: Error, errorInfo: any) {
+    console.error('ErrorBoundary caught:', error, errorInfo);
   }
 
-  render(): ReactNode {
+  render() {
     if (this.state.hasError) {
       if (this.props.fallback) {
-        return this.props.fallback
+        return this.props.fallback;
       }
       return (
-        <div className="p-6 bg-red-900 border border-red-500 rounded">
-          <h2 className="text-xl font-bold text-red-100 mb-2">Something went wrong</h2>
-          <p className="text-red-200 mb-4">{this.state.error?.message || 'Unknown error'}</p>
-          <button
-            className="px-4 py-2 bg-red-700 text-white rounded hover:bg-red-600"
-            onClick={() => this.setState({ hasError: false, error: undefined })}
-          >
-            Try again
-          </button>
+        <div className="p-4 bg-red-900 border border-red-700 rounded text-red-200">
+          <h3 className="font-bold mb-2">Something went wrong</h3>
+          <p className="text-sm opacity-75">{this.state.error?.message}</p>
         </div>
-      )
+      );
     }
-    return this.props.children
+
+    return this.props.children;
   }
 }

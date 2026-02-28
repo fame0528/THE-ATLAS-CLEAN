@@ -1,190 +1,173 @@
-# API Reference — THE ATLAS CLEAN
+# THE ATLAS API Reference
 
-Base URL: `http://localhost:3050` (local)
-
-All endpoints require header:
+## Base URL
 
 ```
-X-ATLAS-TOKEN: <token>
+http://localhost:3050
 ```
+
+All endpoints require the header:
+
+```
+X-ATLAS-TOKEN: <your-token>
+```
+
+## Rate Limits
+
+- Read operations (GET): 10 requests per minute per token
+- Write operations (POST/PUT/DELETE): 5 requests per minute per token
+
+## Data Formats
+
+All JSON responses follow this envelope for errors:
+
+```json
+{
+  "error": "Error message",
+  "details": "Optional details"
+}
+```
+
+Success responses are endpoint-specific.
 
 ---
 
-## Status
+## Endpoints
 
-### `GET /api/status`
+### GET /api/agents
 
-Returns gateway and agent summary.
+Returns list of all agents with their current status.
 
 **Response:**
 
 ```json
 {
-  "gateway": {
-    "status": "running" | "stopped" | "error",
-    "uptime": 12345,
-    "version": "0.x.x",
-    "lastHeartbeat": "2026-02-28T00:00:00Z"
-  },
   "agents": [
     {
-      "id": "hermes",
-      "status": "active" | "idle" | "error",
-      "lastSeen": "2026-02-28T00:00:00Z",
-      "workspace": "C:\\...\\workspace-hermes"
+      "id": "researchor-1",
+      "role": "researcher",
+      "state": "idle",
+      "lastSeen": "2026-02-27T23:30:00.000Z",
+      "workspace": "C:\\...\\workspace-mercury\\agents\\researchor-1",
+      "created": "2026-02-26T12:00:00.000Z"
     }
-  ],
-  "queue": {
-    "pending": 3,
-    "running": 1,
-    "failed": 0
+  ]
+}
+```
+
+---
+
+### GET /api/memory/search?q={query}
+
+Searches across `MEMORY.md` and all `memory/YYYY-MM-DD.md` files. Returns up to 20 ranked results.
+
+**Query Parameters:**
+- `q` (required) — search string
+
+**Response:**
+
+```json
+{
+  "query": "openclaw",
+  "count": 3,
+  "results": [
+    {
+      "file": "MEMORY.md",
+      "line": 124,
+      "snippet": "...deployment uses the OpenClaw gateway on port 3050...",
+      "score": 12
+    }
+  ]
+}
+```
+
+---
+
+### GET /api/metrics
+
+Returns aggregated telemetry from local DB and gateway.
+
+**Response:**
+
+```json
+{
+  "db": {
+    "sizeBytes": 15360,
+    "agents": 2,
+    "tasks": 15,
+    "auditLogs": 124
+  },
+  "gateway": {
+    "recentAuditCount": 42
+  },
+  "timestamp": "2026-02-27T23:41:00.000Z"
+}
+```
+
+---
+
+### GET /api/tasks
+
+Returns recent tasks from local DB (most recent 50).
+
+**Response:**
+
+```json
+{
+  "tasks": [
+    {
+      "id": "task_1740721260000_abc123",
+      "agent_id": "researchor-1",
+      "status": "queued",
+      "payload": { "command": "search", "topic": "token economics" },
+      "created_at": "2026-02-27T23:41:00.000Z",
+      "completed_at": null,
+      "error": null
+    }
+  ]
+}
+```
+
+---
+
+### POST /api/tasks
+
+Enqueue a new task for an agent.
+
+**Request Body:**
+
+```json
+{
+  "agent_id": "researchor-1",
+  "payload": {
+    "command": "restart",
+    "target": "gateway"
   }
 }
 ```
 
----
-
-## Agents
-
-### `GET /api/agents`
-
-List all agents with basic status.
-
-**Response:** `AgentInfo[]`
-
-### `GET /api/agents/[id]`
-
-Get agent details and recent logs.
-
-**Params:**
-- `id` — agent label (e.g., `hermes`)
-
 **Response:**
 
 ```json
 {
-  "id": "hermes",
-  "status": "active",
-  "workspace": "C:\\...\\workspace-hermes",
-  "logs": [
-    {
-      "timestamp": "2026-02-28T00:00:00Z",
-      "level": "info" | "error" | "warn",
-      "message": "..."
-    }
-  ],
-  "tasks": [] // recent tasks from WAL/queue
+  "taskId": "task_1740721260000_abc123",
+  "status": "queued"
 }
 ```
 
 ---
 
-## Task Queue
+### GET /api/health
 
-### `GET /api/queue`
-
-List tasks in the queue.
-
-**Query:**
-- `status?` — `pending` | `running` | `completed` | `failed`
-- `limit?` — default 50
-
-**Response:** `Task[]`
-
-### `POST /api/queue`
-
-Enqueue a task for an agent.
-
-**Body:**
-
-```json
-{
-  "agentId": "hermes",
-  "task": "Run scan on agents",
-  "priority": "low" | "normal" | "high",
-  "metadata": {}
-}
-```
-
-**Response:** `201 Created` + task object.
-
-**Rate limit:** 10/min
-
----
-
-## Memory Search
-
-### `GET /api/memory/search`
-
-Search OpenClaw memory via QMD.
-
-**Query:**
-- `q` — search query (required)
-- `limit?` — default 20
-- `startDate?` — ISO date
-- `endDate?` — ISO date
+Health check endpoint. No authentication required.
 
 **Response:**
 
 ```json
 {
-  "results": [
-    {
-      "file": "memory/2026-02-27.md",
-      "snippet": "This is a snippet with <mark>highlighted</mark> terms",
-      "score": 0.87,
-      "timestamp": "2026-02-27T12:34:56Z"
-    }
-  ],
-  "total": 42,
-  "query": "q"
-}
-```
-
-**Rate limit:** 30/min
-
----
-
-## Gateway Control
-
-All gateway endpoints require rate limit (5/min) and are logged to audit.
-
-### `POST /api/gateway/restart`
-
-Restart the OpenClaw gateway.
-
-**Response:**
-
-```json
-{
-  "result": "ok",
-  "message": "Gateway restarting..."
-}
-```
-
-### `POST /api/gateway/stop`
-
-Stop the gateway gracefully.
-
-**Response:**
-
-```json
-{
-  "result": "ok",
-  "message": "Gateway stopped"
-}
-```
-
-### `POST /api/gateway/savepoint`
-
-Trigger an immediate memory index savepoint (QMD flush).
-
-**Response:**
-
-```json
-{
-  "result": "ok",
-  "message": "Savepoint queued"
+  "status": "ok",
+  "timestamp": "2026-02-27T23:41:00.000Z",
+  "uptime": 3600
 }
 ```
 
@@ -192,60 +175,34 @@ Trigger an immediate memory index savepoint (QMD flush).
 
 ## Error Codes
 
-| Code | Meaning |
-|------|---------|
-| 400 | Invalid request body/query |
-| 401 | Missing or invalid X-ATLAS-TOKEN |
-| 403 | Token valid but operation forbidden |
+| Code | Description |
+|------|-------------|
+| 400 | Bad request (missing/invalid parameters) |
+| 401 | Unauthorized (missing/invalid token) |
 | 429 | Rate limit exceeded |
-| 500 | Internal error (check logs) |
-| 503 | Gateway unavailable |
+| 500 | Internal server error |
+| 503 | Gateway/service unavailable |
 
 ---
 
-## Examples
+## OpenClaw Adapter Internals
 
-### cURL
+The adapter (`src/lib/openclaw-adapter.ts`) wraps the gateway HTTP API:
 
-```bash
-# Status
-curl -H "X-ATLAS-TOKEN: YOUR_TOKEN" http://localhost:3050/api/status
+| Gateway Endpoint | Method | Adapter Function |
+|------------------|--------|------------------|
+| `/agents` | GET | `listAgents()` |
+| `/status` | GET | `getStatus()` |
+| `/gateway/restart` | POST | `restartGateway()` |
+| `/gateway/stop` | POST | `stopGateway()` |
+| `/gateway/savepoint` | POST | `createSavepoint(label?)` |
+| `/queue` | GET | `getQueue()` |
+| `/queue` | POST | `sendTask(agentId, payload)` |
+| `/memory/search` | GET | `searchMemory(query, limit)` |
+| `/audit/logs` | GET | `getAuditLogs(limit)` |
 
-# List agents
-curl -H "X-ATLAS-TOKEN: YOUR_TOKEN" http://localhost:3050/api/agents
-
-# Get agent logs
-curl -H "X-ATLAS-TOKEN: YOUR_TOKEN" http://localhost:3050/api/agents/hermes
-
-# Search memory
-curl -H "X-ATLAS-TOKEN: YOUR_TOKEN" "http://localhost:3050/api/memory/search?q=health"
-
-# Enqueue task
-curl -X POST -H "X-ATLAS-TOKEN: YOUR_TOKEN" -H "Content-Type: application/json" \
-  -d '{"agentId":"hermes","task":"Run scan","priority":"high"}' \
-  http://localhost:3050/api/queue
-
-# Restart gateway
-curl -X POST -H "X-ATLAS-TOKEN: YOUR_TOKEN" http://localhost:3050/api/gateway/restart
-
-# Trigger memory index savepoint
-curl -X POST -H "X-ATLAS-TOKEN: YOUR_TOKEN" http://localhost:3050/api/gateway/savepoint
-```
+Adapter errors are thrown as exceptions; callers should catch and handle.
 
 ---
 
-## Authentication Details
-
-Token is a 256-bit random string stored in `.env.local`:
-
-```
-ATLAS_TOKEN=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-```
-
-Server reads from `process.env.ATLAS_TOKEN`. No database lookup.
-
-Client must include header on every request. No session cookies.
-
----
-
-**Note:** This API runs locally only. Do not expose to public internet without additional auth (VPN recommended).
+**Last updated:** 2026-02-27

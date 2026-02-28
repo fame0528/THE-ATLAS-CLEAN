@@ -1,105 +1,65 @@
 /**
- * OpenClaw Gateway Adapter
- *
- * Provides typed functions to interact with OpenClaw gateway HTTP API.
- * All requests include X-ATLAS-TOKEN for authentication.
+ * OpenClaw Adapter — Higher-level service layer
+ * Combines low-level CLI adapter with local DB for task management
  */
 
-const GATEWAY_URL = process.env.OPENCLAW_GATEWAY || 'http://localhost:3333';
-const ATLAS_TOKEN = process.env.ATLAS_TOKEN;
+import { listAgents, enqueueTask, getPendingTasks } from './openclaw';
+import { getDB } from './db';
 
 /**
- * Internal helper to make authenticated requests to gateway
+ * Send a task to the OpenClaw gateway (fire-and-forget)
+ * Also creates local task record if needed (but route already does)
  */
-async function gatewayFetch(path: string, options: RequestInit = {}): Promise<any> {
-  const url = `${GATEWAY_URL}${path}`;
-  const headers = {
-    'Content-Type': 'application/json',
-    ...(ATLAS_TOKEN && { 'X-ATLAS-TOKEN': ATLAS_TOKEN }),
-    ...options.headers,
-  };
-
-  const res = await fetch(url, { ...options, headers });
-
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`Gateway ${res.status}: ${text}`);
-  }
-
-  return res.json();
+export async function sendTask(agentId: string, payload: any): Promise<void> {
+  // The low-level enqueueTask expects (agentId, task string, priority)
+  // We need to serialize payload as task string. Use JSON.
+  const taskString = JSON.stringify(payload);
+  await enqueueTask(agentId, taskString, 'normal');
 }
 
 /**
- * List all agents known to the gateway
- */
-export async function listAgents() {
-  return gatewayFetch('/agents');
-}
-
-/**
- * Get gateway status and health
- */
-export async function getStatus() {
-  return gatewayFetch('/status');
-}
-
-/**
- * Restart the OpenClaw gateway daemon
- */
-export async function restartGateway() {
-  return gatewayFetch('/gateway/restart', { method: 'POST' });
-}
-
-/**
- * Stop the gateway
- */
-export async function stopGateway() {
-  return gatewayFetch('/gateway/stop', { method: 'POST' });
-}
-
-/**
- * Create a savepoint (checkpoint) for recovery
- */
-export async function createSavepoint(label?: string) {
-  return gatewayFetch('/gateway/savepoint', {
-    method: 'POST',
-    body: JSON.stringify({ label: label || `atlas-${Date.now()}` }),
-  });
-}
-
-/**
- * Enqueue a task for an agent
- */
-export async function sendTask(agentId: string, payload: object) {
-  return gatewayFetch('/queue', {
-    method: 'POST',
-    body: JSON.stringify({
-      agent_id: agentId,
-      payload,
-    }),
-  });
-}
-
-/**
- * Get current queue status
+ * Get current queue from outbox (pending tasks not yet assigned)
+ * Returns array of { agentId, task, priority } from parsing outbox
  */
 export async function getQueue() {
-  return gatewayFetch('/queue');
-}
-
-/**
- * Search memory using OpenClaw's memory_search endpoint
- */
-export async function searchMemory(query: string, limit = 20) {
-  return gatewayFetch('/memory/search?' + new URLSearchParams({
-    q: query,
-    limit: String(limit),
-  }));
-}
-
-/**
- * Get recent audit logs from gateway
- */
-export async function getAuditLogs(limit = 100) {
-  return gatewayFetch(`/audit/logs?limit=${limit}`);
+  const rawLines = await getPendingTasks();
+  // Parse lines like: [timestamp] agent: TASK: [PRIORITY] {json?}
+  const tasks = rawLines.map((line, idx) => {
+    // Simple parse: after "TASK: [" we have priority then space then rest is task JSON
+    const match = line.match(/TASK:\s+\[([A-Z]+)\]\s+(.*)/s);
+    if (match) {
+      const priority = match[1].toLowerCase() as 'low' | 'normal' | 'high';
+      const taskStr = match[2];
+      try {
+        const task = JSON.parse(taskStr);
+        return {
+          id: `task-${idx}`,
+          agentId: line.split(']')[0].split('[')[1]?.trim() || 'unknown',
+          task,
+          priority,
+          status: 'pending' as const,
+          createdAt: line.substring(1, 20), // extract timestamp part
+        };
+      } catch {
+        // not JSON, treat as plain text
+        return {
+          id: `task-${idx}`,
+          agentId: 'unknown',
+          task: { text: taskStr },
+          priority,
+          status: 'pending' as const,
+          createdAt: line.substring(1, 20),
+        };
+      }
+    }
+    return {
+      id: `task-${idx}`,
+      agentId: 'unknown',
+      task: { text: line },
+      priority: 'normal' as const,
+      status: 'pending' as const,
+      createdAt: new Date().toISOString(),
+    };
+  });
+  return tasks;
 }
