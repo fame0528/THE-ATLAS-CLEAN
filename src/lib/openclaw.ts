@@ -1,13 +1,13 @@
 /**
  * OpenClaw Adapter
- * Wraps CLI commands for gateway status, agents, queue, and memory operations.
- * All paths are validated against allowlist: C:\Users\spenc\.openclaw\
+ * Wraps CLI commands for gateway status, agents, queue, memory, and cron.
+ * All paths validated against allowlist: C:\Users\spenc\.openclaw\
  */
 
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import { readFile, writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
+import { existsSync, readdir } from 'fs';
 import path from 'path';
 
 const execAsync = promisify(exec);
@@ -21,32 +21,32 @@ function validatePath(filePath: string): void {
 
 /**
  * Get gateway status via `openclaw gateway status`
- * Returns raw JSON string from CLI
+ * Returns parsed JSON with uptime, pid, memory, version
  */
-export async function getGatewayStatus(): Promise<string> {
+export async function getGatewayStatus(): Promise<any> {
   try {
     const { stdout } = await execAsync('openclaw gateway status', { timeout: 10000 });
-    return stdout;
+    return JSON.parse(stdout);
   } catch (error: any) {
     throw new Error(`Gateway status failed: ${error.message}`);
   }
 }
 
 /**
- * List agents via `openclaw agents list`
+ * List agents via `openclaw agents list --json`
  */
-export async function listAgents(): Promise<string> {
+export async function listAgents(): Promise<any[]> {
   try {
-    const { stdout } = await execAsync('openclaw agents list', { timeout: 10000 });
-    return stdout;
+    const { stdout } = await execAsync('openclaw agents list --json', { timeout: 10000 });
+    return JSON.parse(stdout);
   } catch (error: any) {
-    throw new Error(`List agents failed: ${error.message}`);
+    console.warn('listAgents fallback:', error.message);
+    return [];
   }
 }
 
 /**
- * Get agent logs from workspace directory
- * Reads last N lines from logs/agent.log if exists
+ * Get agent logs
  */
 export async function getAgentLogs(agentId: string, lines: number = 100): Promise<string> {
   const logPath = path.join(ALLOWLIST, `workspace-${agentId}`, 'logs', `${agentId}.log`);
@@ -64,7 +64,6 @@ export async function getAgentLogs(agentId: string, lines: number = 100): Promis
 
 /**
  * Get pending tasks from nexus outbox
- * Returns lines from memory/nexus-outbox.md that are not yet completed
  */
 export async function getPendingTasks(): Promise<string[]> {
   const outboxPath = path.join(ALLOWLIST, 'memory', 'nexus-outbox.md');
@@ -80,8 +79,7 @@ export async function getPendingTasks(): Promise<string[]> {
 }
 
 /**
- * Enqueue a task by appending to outbox
- * Format: [YYYY-MM-DD HH:MM] hermes: TASK: <description>
+ * Enqueue a task
  */
 export async function enqueueTask(agentId: string, task: string, priority: 'low' | 'normal' | 'high' = 'normal'): Promise<void> {
   const outboxPath = path.join(ALLOWLIST, 'memory', 'nexus-outbox.md');
@@ -94,8 +92,7 @@ export async function enqueueTask(agentId: string, task: string, priority: 'low'
 }
 
 /**
- * Search memory using QMD (via openclaw CLI if available)
- * Falls back to grep if QMD not installed
+ * Search memory (local grep fallback if gateway not available)
  */
 export async function memorySearch(query: string, limit: number = 20): Promise<string> {
   try {
@@ -114,7 +111,7 @@ export async function memorySearch(query: string, limit: number = 20): Promise<s
 }
 
 /**
- * Restart gateway (action)
+ * Actions
  */
 export async function restartGateway(): Promise<{ stdout: string; stderr: string }> {
   try {
@@ -125,9 +122,6 @@ export async function restartGateway(): Promise<{ stdout: string; stderr: string
   }
 }
 
-/**
- * Stop gateway (action)
- */
 export async function stopGateway(): Promise<{ stdout: string; stderr: string }> {
   try {
     const { stdout } = await execAsync('openclaw gateway stop', { timeout: 15000 });
@@ -137,13 +131,9 @@ export async function stopGateway(): Promise<{ stdout: string; stderr: string }>
   }
 }
 
-/**
- * Savepoint & stop (action)
- */
 export async function savepointAndStop(): Promise<{ stdout: string; stderr: string }> {
   try {
     const { stdout } = await execAsync('openclaw memory index --savepoint', { timeout: 30000 });
-    // Then stop
     const { stdout: stopOut } = await execAsync('openclaw gateway stop', { timeout: 15000 });
     return { stdout: stdout + '\n' + stopOut, stderr: '' };
   } catch (error: any) {
@@ -151,13 +141,9 @@ export async function savepointAndStop(): Promise<{ stdout: string; stderr: stri
   }
 }
 
-/**
- * Index memory (action)
- */
 export async function indexMemory(): Promise<{ count: number }> {
   try {
     const { stdout } = await execAsync('openclaw memory index', { timeout: 30000 });
-    // Parse count from output if possible, otherwise 0
     const match = stdout.match(/indexed (\d+)/i);
     const count = match ? parseInt(match[1], 10) : 0;
     return { count };
@@ -167,34 +153,157 @@ export async function indexMemory(): Promise<{ count: number }> {
 }
 
 /**
- * Get health data for /api/health endpoint
+ * Write uniform heartbeat
+ */
+export async function writeHeartbeat(agentId: string): Promise<{ success: boolean; errors: string[] }> {
+  const errors: string[] = [];
+  const now = new Date();
+  const timestamp = now.toLocaleString('en-US', { timeZone: 'America/New_York' });
+  const line = `[${timestamp}] ${agentId}: HEARTBEAT status=green\n`;
+
+  const workspacePath = path.join(ALLOWLIST, `workspace-${agentId}`, 'SESSION-STATE.md');
+  const agentPath = path.join(ALLOWLIST, `agents`, agentId, 'agent', 'SESSION-STATE.md');
+  const dailyDir = path.join(ALLOWLIST, `workspace-${agentId}`, 'memory');
+  const dailyFile = path.join(dailyDir, `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}.md`);
+
+  try {
+    if (!existsSync(dailyDir)) await mkdir(dailyDir, { recursive: true });
+    if (!existsSync(dailyFile)) await writeFile(dailyFile, `# Daily Note — ${now.toDateString()}\n\n`, 'utf8');
+  } catch (err: any) {
+    errors.push(`daily note creation failed: ${err.message}`);
+  }
+
+  try {
+    validatePath(workspacePath);
+    await writeFile(workspacePath, line, { flag: 'a' });
+  } catch (err: any) {
+    errors.push(`workspace SESSION-STATE.md write failed: ${err.message}`);
+  }
+
+  try {
+    validatePath(agentPath);
+    await writeFile(agentPath, line, { flag: 'a' });
+  } catch (err: any) {
+    errors.push(`agent SESSION-STATE.md write failed: ${err.message}`);
+  }
+
+  return { success: errors.length === 0, errors };
+}
+
+/**
+ * Get cron jobs from canonical store
+ */
+export async function listCronJobs(): Promise<any[]> {
+  const storePath = path.join(ALLOWLIST, '.openclaw', 'cron', 'jobs.json');
+  try {
+    if (!existsSync(storePath)) return [];
+    const content = await readFile(storePath, 'utf8');
+    const parsed = JSON.parse(content);
+    return parsed.jobs || [];
+  } catch (error: any) {
+    console.warn('listCronJobs error:', error.message);
+    return [];
+  }
+}
+
+/**
+ * Get comprehensive health data with real metrics
  */
 export async function getHealthData() {
-  // Gather real data from OpenClaw where possible, otherwise stub
-  const gatewayStatus = "online"; // would ping gateway
-  const memoryProvider = "local";
-  const documentCount = 0; // would query indexer
-
-  return {
+  const nowTs = Date.now();
+  const results: any = {
     status: "ok",
     timestamp: new Date().toISOString(),
-    atlas: {
-      version: "0.1.0",
-      db: { dbSize: 0, agentsCount: 0, tasksCount: 0 },
-    },
-    gateway: {
-      status: gatewayStatus,
-      pid: 0,
-      memoryMb: 0,
-      lastRestart: new Date().toISOString(),
-    },
+    atlas: { version: "0.1.0", db: { dbSize: 0, agentsCount: 0, tasksCount: 0 } },
+    gateway: { status: "offline", pid: null, memoryMb: null, lastRestart: null },
     agents: { total: 0, healthy: 0 },
-    memory: {
-      provider: memoryProvider,
-      lastIndexed: new Date().toISOString(),
-      documentCount,
-    },
-    ops: { overall: 0, cronScore: 0, agentScore: 0 },
+    memory: { provider: "local", lastIndexed: null, documentCount: 0 },
+    ops: { overall: 0, cronScore: 0, agentScore: 0, wal: {} },
     cron: { total: 0, healthy: 0, jobs: [] },
   };
+
+  // Gateway
+  try {
+    const gw = await getGatewayStatus();
+    results.gateway = {
+      status: gw.status || 'online',
+      pid: gw.pid || null,
+      memoryMb: gw.memoryMb || null,
+      lastRestart: gw.lastRestart || null,
+    };
+  } catch (e) {
+    results.gateway.status = 'offline';
+  }
+
+  // Agents
+  try {
+    const agents = await listAgents();
+    const total = agents.length;
+    const healthy = agents.filter((a: any) => a.state === 'idle' || a.state === 'running').length;
+    results.agents = { total, healthy };
+    results.atlas.db.agentsCount = total;
+  } catch (e) {}
+
+  // Memory document count (approximate)
+  try {
+    const memoryDir = path.join(ALLOWLIST, 'memory');
+    if (existsSync(memoryDir)) {
+      const files = await readdir(memoryDir);
+      const mdFiles = files.filter(f => f.endsWith('.md'));
+      results.memory.documentCount = mdFiles.length;
+      results.atlas.db.dbSize = mdFiles.length;
+    }
+  } catch (e) {}
+
+  // WAL health for kronos and atlas
+  const walAgents = ['kronos', 'atlas'];
+  for (const agent of walAgents) {
+    const walPath = path.join(ALLOWLIST, `workspace-${agent}`, 'SESSION-STATE.md');
+    try {
+      if (existsSync(walPath)) {
+        const content = await readFile(walPath, 'utf8');
+        const lines = content.split('\n').filter(l => l.trim());
+        const lastLine = lines[lines.length - 1] || '';
+        const match = lastLine.match(/\[(.*?)\]/);
+        let ageMin = null;
+        if (match) {
+          const parsed = Date.parse(match[1]);
+          if (!isNaN(parsed)) {
+            ageMin = (nowTs - parsed) / 60000;
+          }
+        }
+        results.ops.wal[agent] = { lastLine, ageMin, status: (ageMin !== null && ageMin < 15) ? 'fresh' : 'stale' };
+      } else {
+        results.ops.wal[agent] = { status: 'missing' };
+      }
+    } catch (err: any) {
+      results.ops.wal[agent] = { status: 'error', error: err.message };
+    }
+  }
+
+  // Cron jobs health
+  try {
+    const jobs = await listCronJobs();
+    const totalJobs = jobs.length;
+    const enabledJobs = jobs.filter((j: any) => j.enabled).length;
+    results.cron = { total: totalJobs, healthy: enabledJobs, jobs: jobs.slice(0, 10) };
+  } catch (e) {}
+
+  // Weighted scoring (out of 100)
+  let score = 0;
+  score += (results.gateway.status === 'online') ? 30 : 0;
+  if (results.agents.total > 0) score += Math.round((results.agents.healthy / results.agents.total) * 25);
+  score += (results.memory.documentCount > 0) ? 15 : 5;
+  const walFresh = Object.values(results.ops.wal).filter((s: any) => s.status === 'fresh').length;
+  score += walFresh * 10;
+  score += (results.cron.healthy > 0) ? 10 : 0;
+
+  results.ops.overall = Math.min(100, score);
+  results.ops.cronScore = Math.round((results.cron.healthy / Math.max(1, results.cron.total)) * 100);
+  results.ops.agentScore = results.agents.total > 0 ? Math.round((results.agents.healthy / results.agents.total) * 100) : 0;
+
+  return results;
 }
+
+// Alias for backwards compatibility
+export const savepoint = savepointAndStop;
