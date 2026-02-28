@@ -1,30 +1,76 @@
+// Core types for ATLAS dashboard
+// All interfaces used across the application
+
 export interface Agent {
   id: string;
   role: string;
-  state: string;
-  last_message_at: string | null;
-  workspace_path: string;
-  created_at: string;
-  updated_at: string;
+  workspacePath: string;
+  status: 'idle' | 'running' | 'error';
+  lastMessageTime: Date | null;
+  memoryHealth?: MemoryHealth;
+}
+
+export interface MemoryHealth {
+  indexStatus: 'ok' | 'stale' | 'error';
+  lastIndexTime: Date | null;
+  provider: 'local' | 'remote';
+  indexSize?: number;
 }
 
 export interface Task {
   id: string;
-  agent_id: string;
-  status: "queued" | "running" | "completed" | "failed";
-  payload: string;
-  created_at: string;
-  completed_at: string | null;
-  error: string | null;
+  agentId: string;
+  type: 'inbox' | 'processing' | 'completed' | 'failed';
+  payload: Record<string, unknown>;
+  createdAt: Date;
+  completedAt?: Date;
+  error?: string;
 }
 
-export interface HealthResponse {
-  status: string;
-  timestamp: string;
-  atlas: { version: string; db: { dbSize: number; agentsCount: number; tasksCount: number } };
-  gateway: { status: string; pid: number; memoryMb: number; lastRestart: string };
-  agents: { total: number; healthy: number };
-  memory: { provider: string; lastIndexed: string; documentCount: number };
-  ops: { overall: number; cronScore: number; agentScore: number };
-  cron: { total: number; healthy: number; jobs: Array<{ id: string; name: string; status: string }> };
+export interface QueueDepth {
+  deliveryQueue: number;
+  lastProcessedId?: string;
+}
+
+export interface GatewayStatus {
+  online: boolean;
+  uptime?: number;
+  version?: string;
+  lastHeartbeat: Date | null;
+}
+
+export interface CostMetrics {
+  dailySpend?: number;
+  monthlySpend?: number;
+  tokenUsage: {
+    total: number;
+    prompt: number;
+    completion: number;
+  };
+  agentBreakdown?: Record<string, number>;
+}
+
+export interface AuditLogEntry {
+  id: string;
+  timestamp: Date;
+  agentId?: string;
+  action: string;
+  details: Record<string, unknown>;
+  outcome: 'success' | 'failure';
+  error?: string;
+}
+
+export interface SystemMetrics {
+  gateway: GatewayStatus;
+  agents: Agent[];
+  queueDepth: QueueDepth;
+  memoryHealth: MemoryHealth;
+  cost?: CostMetrics;
+  lastUpdated: Date;
+}
+
+export interface OpenClawAdapterResponse<T = unknown> {
+  data?: T;
+  error?: string;
+  status: 'ok' | 'error';
 }

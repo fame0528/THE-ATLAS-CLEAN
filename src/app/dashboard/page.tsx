@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import type { SystemMetrics, Agent } from '@/types';
 
+export const dynamic = 'force-dynamic';
+
 export default function DashboardPage() {
   const [metrics, setMetrics] = useState<SystemMetrics | null>(null);
   const [loading, setLoading] = useState(true);
