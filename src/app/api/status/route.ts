@@ -23,12 +23,12 @@ export async function GET(request: NextRequest) {
     const proxyOnline = gatewayOnline
     const connectedAgents = health.agents?.total || 0
 
-    const memoryProvider = (health.memory?.provider as 'local' | 'qdrant' | 'falkor' | 'memzero') || 'local'
+    const memoryProvider: MemoryHealth['provider'] = (health.memory?.provider as MemoryHealth['provider']) || 'local';
     const indexStatus: MemoryHealth['indexStatus'] = health.memory?.documentCount > 0 ? 'healthy' : 'unknown'
     const lastIndexTime = health.memory?.lastIndexed ? new Date(health.memory.lastIndexed) : null
     const totalDocuments = health.memory?.documentCount || 0
 
-    const tasks = db.getTasks(1000) as any[]
+    const tasks = db.getTasks(1000)
     const queued = tasks.filter(t => t.status === 'queued')
     const queue = {
       deliveryQueueCount: queued.length,

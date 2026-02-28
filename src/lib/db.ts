@@ -3,12 +3,57 @@ import { join } from "path";
 
 const DB_PATH = process.env.ATLAS_DB_PATH || join(process.cwd(), "data", "atlas.json");
 
+// Agent record as stored in DB
+export interface DBAgent {
+  id: string;
+  role: string;
+  state: string;
+  workspace_path: string;
+  last_message_at?: string | null;
+  updated_at: string;
+  created_at: string;
+}
+
+// Task record as stored in DB
+export interface DBTask {
+  id: string;
+  agent_id: string;
+  status: 'queued' | 'running' | 'completed' | 'error';
+  payload: object;
+  created_at: string;
+  completed_at?: string | null;
+  error?: string | null;
+}
+
+// Audit log entry
+export interface DBAudit {
+  timestamp: string;
+  endpoint: string;
+  method: string;
+  user: string;
+  action: string;
+  details: object | null;
+}
+
+// Memory index meta
+export interface DBMemoryMeta {
+  id: number;
+  last_indexed: string | null;
+  provider: string;
+  document_count: number;
+}
+
 /**
  * Simple JSON-based database for MVP
  * Structure: { agents: {}, tasks: {}, audit_logs: [], memory_index_meta: {} }
  */
 class AtlasDB {
-  private data: any;
+  private data: {
+    agents: Record<string, DBAgent>;
+    tasks: Record<string, DBTask>;
+    audit_logs: DBAudit[];
+    memory_index_meta: DBMemoryMeta;
+  };
   private dirty = false;
 
   constructor() {
@@ -41,7 +86,7 @@ class AtlasDB {
         last_indexed: null,
         provider: "local",
         document_count: 0,
-      },
+      } as DBMemoryMeta,
     };
   }
 
@@ -53,14 +98,14 @@ class AtlasDB {
   }
 
   // Agent operations
-  getAgents() {
+  getAgents(): DBAgent[] {
     return Object.values(this.data.agents).sort(
-      (a: any, b: any) =>
+      (a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
   }
 
-  getAgent(id: string) {
+  getAgent(id: string): DBAgent | null {
     return this.data.agents[id] || null;
   }
 
@@ -86,7 +131,7 @@ class AtlasDB {
   }
 
   // Task operations
-  createTask(agentId: string, payload: object) {
+  createTask(agentId: string, payload: object): string {
     const id = `task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
     this.data.tasks[id] = {
       id,
@@ -102,9 +147,9 @@ class AtlasDB {
     return id;
   }
 
-  getTasks(limit = 50) {
+  getTasks(limit = 50): DBTask[] {
     const tasks = Object.values(this.data.tasks).sort(
-      (a: any, b: any) =>
+      (a, b) =>
         new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
     return tasks.slice(0, limit);
@@ -112,7 +157,7 @@ class AtlasDB {
 
   updateTaskStatus(taskId: string, status: string, error?: string) {
     if (this.data.tasks[taskId]) {
-      this.data.tasks[taskId].status = status;
+      this.data.tasks[taskId].status = status as DBTask['status'];
       this.data.tasks[taskId].completed_at = new Date().toISOString();
       if (error) this.data.tasks[taskId].error = error;
       this.dirty = true;
@@ -128,22 +173,23 @@ class AtlasDB {
     action: string;
     details?: object;
   }) {
-    this.data.audit_logs.push({
+    const entry: DBAudit = {
       timestamp: new Date().toISOString(),
       endpoint: params.endpoint,
       method: params.method,
       user: params.user?.slice(0, 8) || "unknown",
       action: params.action,
       details: params.details || null,
-    });
+    };
+    this.data.audit_logs.push(entry);
     this.dirty = true;
     this.save();
   }
 
-  getAuditLogs(limit = 100) {
+  getAuditLogs(limit = 100): DBAudit[] {
     return this.data.audit_logs
       .slice(-limit)
-      .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }
 
   // Memory meta operations
@@ -154,28 +200,15 @@ class AtlasDB {
     this.save();
   }
 
-  getMemoryIndexMeta() {
+  getMemoryIndexMeta(): DBMemoryMeta {
     return this.data.memory_index_meta;
-  }
-
-  // Health check
-  health() {
-    return {
-      dbSize: JSON.stringify(this.data).length,
-      agentsCount: Object.keys(this.data.agents).length,
-      tasksCount: Object.keys(this.data.tasks).length,
-      auditLogsCount: this.data.audit_logs.length,
-    };
-  }
-
-  close() {
-    this.save();
   }
 }
 
+// Singleton instance
 let dbInstance: AtlasDB | null = null;
 
-export function getDB() {
+export function getDB(): AtlasDB {
   if (!dbInstance) {
     dbInstance = new AtlasDB();
   }
