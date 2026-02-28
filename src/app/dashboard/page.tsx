@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { SystemMetrics, Agent } from '@/types';
+import { getToken, setToken } from '@/lib/token';
 
 export const dynamic = 'force-dynamic';
 
@@ -11,24 +12,42 @@ export default function DashboardPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<Array<{ file: string; lines: string; snippet: string }>>([]);
   const [searching, setSearching] = useState(false);
+  const [tokenInput, setTokenInput] = useState('');
+  const [savedToken, setSavedToken] = useState<string | null>(null);
 
   useEffect(() => {
+    const token = getToken();
+    if (token) setSavedToken(token);
     fetchMetrics();
-    const interval = setInterval(fetchMetrics, 5000); // Auto-refresh every 5s
+    const interval = setInterval(fetchMetrics, 5000);
     return () => clearInterval(interval);
   }, []);
 
   async function fetchMetrics() {
+    const token = savedToken || getToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (token) headers['X-ATLAS-TOKEN'] = token;
+
     try {
-      const res = await fetch('/api/status?bootstrap=true');
+      const res = await fetch('/api/status?bootstrap=true', { headers });
       if (res.ok) {
         const data = await res.json();
         setMetrics(data);
+      } else if (res.status === 401) {
+        console.warn('Invalid or missing token');
       }
     } catch (err) {
       console.error('Failed to fetch metrics:', err);
     } finally {
       setLoading(false);
+    }
+  }
+
+  function handleSaveToken() {
+    if (tokenInput.trim()) {
+      setToken(tokenInput.trim());
+      setSavedToken(tokenInput.trim());
+      setTokenInput('');
     }
   }
 
@@ -38,9 +57,13 @@ export default function DashboardPage() {
 
     setSearching(true);
     try {
+      const token = savedToken || getToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (token) headers['X-ATLAS-TOKEN'] = token;
+
       const res = await fetch('/api/memory', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ query: searchQuery }),
       });
       if (res.ok) {
@@ -51,6 +74,34 @@ export default function DashboardPage() {
       console.error('Search failed:', err);
     } finally {
       setSearching(false);
+    }
+  }
+
+  async function executeAction(endpoint: string, label: string) {
+    const token = savedToken || getToken();
+    if (!token) {
+      alert('No token configured. Set token below.');
+      return;
+    }
+
+    if (!confirm(`Confirm action: ${label}?`)) return;
+
+    try {
+      const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'X-ATLAS-TOKEN': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ confirm: true }),
+      });
+
+      if (res.ok) {
+        alert(`${label} initiated successfully.`);
+        setTimeout(() => window.location.reload(), 2000);
+      } else {
+        const err = await res.json();
+        alert(`Error: ${err.error ?? 'Unknown'}`);
+      }
+    } catch (err) {
+      alert(`Network error: ${err}`);
     }
   }
 
@@ -67,7 +118,26 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-3xl font-bold">Swarm Dashboard</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-3xl font-bold">🧭 THE ATLAS</h1>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <label className="text-sm text-gray-400">Token:</label>
+            <input
+              type="password"
+              value={savedToken ? '********' : tokenInput}
+              onChange={(e) => setTokenInput(e.target.value)}
+              placeholder={savedToken ? 'Configured' : 'Enter X-ATLAS-TOKEN'}
+              className="p-2 border rounded dark:bg-gray-700 dark:border-gray-600 text-sm w-48"
+            />
+            <button onClick={handleSaveToken} className="bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700">
+              {savedToken ? 'Update' : 'Save'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <p className="text-gray-400">Swarm Control Panel — Local-First Dashboard</p>
 
       {/* System Status Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -211,25 +281,4 @@ function StatusCard({ title, value, color }: { title: string; value: string; col
       <div className="text-2xl font-bold">{value}</div>
     </div>
   );
-}
-
-async function executeAction(endpoint: string, label: string) {
-  if (!confirm(`Confirm action: ${label}?`)) return;
-
-  const token = prompt('Enter ATLAS token:');
-  if (!token) return;
-
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 'X-ATLAS-TOKEN': token },
-  });
-
-  if (res.ok) {
-    alert(`${label} initiated successfully.`);
-    // Refresh metrics after delay
-    setTimeout(() => window.location.reload(), 2000);
-  } else {
-    const err = await res.json();
-    alert(`Error: ${err.error ?? 'Unknown'}`);
-  }
 }
