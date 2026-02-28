@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
-import "./globals.css";
+import ClientLayout from "@/components/ClientLayout";
 
 export const metadata: Metadata = {
-  title: "THE ATLAS — Clean Mission Control",
-  description: "Local-first swarm control panel",
+  title: "THE ATLAS — Clean Rebuild",
+  description: "Local-first Mission Control for the Swarm",
 };
 
 export default function RootLayout({
@@ -11,11 +11,5 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
-    <html lang="en">
-      <body className="bg-gray-900 text-gray-100 min-h-screen">
-        {children}
-      </body>
-    </html>
-  );
+  return <ClientLayout>{children}</ClientLayout>;
 }

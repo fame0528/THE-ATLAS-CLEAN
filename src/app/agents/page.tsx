@@ -93,13 +93,6 @@ export default function AgentsPage() {
           </tbody>
         </table>
       </div>
-
-      <div className="mt-6 text-atlas-muted text-sm">
-        <p>
-          <strong>Note:</strong> Agents heartbeat to this dashboard via the
-          OpenClaw gateway. Integration pending (Hermes).
-        </p>
-      </div>
     </div>
   );
 }
