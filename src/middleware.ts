@@ -1,62 +1,79 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { checkRateLimit } from '@/lib/rate-limit';
+import { NextRequest, NextResponse } from 'next/server'
+import { createHash } from 'crypto'
+import { rateLimiter } from '@/lib/security/rate-limiter'
+import { auditLogger } from '@/lib/security/audit'
+import { verifyToken, getAuthErrorResponse } from '@/lib/auth'
 
-const ATLAS_TOKEN = process.env.ATLAS_TOKEN;
-
-/**
- * Middleware: Protect API routes with token auth + rate limiting
- * - All /api/* routes require X-ATLAS-TOKEN header
- * - Rate limiting: 10 req/min for reads, 5 req/min for writes/actions
- * - Static assets and health check bypass auth
- */
-export function middleware(request: NextRequest) {
-  // Skip non-API routes
-  if (!request.nextUrl.pathname.startsWith('/api/')) {
-    return NextResponse.next();
-  }
-
-  // Health check endpoint - no auth required
-  if (request.nextUrl.pathname === '/api/health') {
-    return NextResponse.next();
-  }
-
-  // Enforce token authentication
-  const token = request.headers.get('x-atlas-token');
-  if (!token || token !== ATLAS_TOKEN) {
-    return NextResponse.json(
-      { error: 'Unauthorized — invalid or missing ATLAS_TOKEN' },
-      { status: 401 }
-    );
-  }
-
-  // Apply rate limiting for action/write endpoints
-  const isActionEndpoint = request.nextUrl.pathname.startsWith('/api/actions/') ||
-                           request.nextUrl.pathname.startsWith('/api/queue/') ||
-                           (request.nextUrl.pathname.includes('/api/') && ['POST','PATCH','DELETE'].includes(request.method));
-  
-  if (isActionEndpoint) {
-    const allowed = checkRateLimit(token, 5); // 5 per minute for writes/actions
-    if (!allowed) {
-      return NextResponse.json(
-        { error: 'Rate limit exceeded — maximum 5 requests per minute' },
-        { status: 429 }
-      );
-    }
-  } else {
-    // Read-only endpoints get higher limit
-    checkRateLimit(token, 10); // 10 per minute (recording only)
-  }
-
-  return NextResponse.next();
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex').substring(0, 16)
 }
 
-// Apply to all API routes + dashboard routes
+function getClientIp(request: NextRequest): string {
+  const xff = request.headers.get('x-forwarded-for')
+  if (xff) return xff.split(',')[0].trim()
+  const xri = request.headers.get('x-real-ip')
+  if (xri) return xri
+  return request.ip || 'unknown'
+}
+
+export async function middleware(request: NextRequest) {
+  // Only protect /api routes
+  if (!request.nextUrl.pathname.startsWith('/api')) {
+    return NextResponse.next()
+  }
+
+  const token = request.headers.get('X-ATLAS-TOKEN')
+  if (!token || !verifyToken(token)) {
+    // Audit failure
+    await auditLogger.log({
+      timestamp: new Date().toISOString(),
+      method: request.method,
+      endpoint: request.nextUrl.pathname,
+      tokenHash: hashToken(token || ''),
+      ip: getClientIp(request),
+      result: 'fail',
+      reason: 'Invalid or missing token',
+    })
+    return getAuthErrorResponse()
+  }
+
+  // Rate limiting for mutating methods
+  const method = request.method
+  if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) {
+    const tokenHash = hashToken(token)
+    const ip = getClientIp(request)
+    if (rateLimiter.isLimited(tokenHash, ip)) {
+      await auditLogger.log({
+        timestamp: new Date().toISOString(),
+        method,
+        endpoint: request.nextUrl.pathname,
+        tokenHash,
+        ip,
+        result: 'fail',
+        reason: 'Rate limit exceeded',
+      })
+      return NextResponse.json(
+        { error: 'Rate limit exceeded', message: 'Too many requests' },
+        { status: 429 }
+      )
+    }
+  }
+
+  // Audit success (best-effort async)
+  const tokenHash = hashToken(token)
+  const ip = getClientIp(request)
+  auditLogger.log({
+    timestamp: new Date().toISOString(),
+    method,
+    endpoint: request.nextUrl.pathname,
+    tokenHash,
+    ip,
+    result: 'success',
+  }).catch(() => {})
+
+  return NextResponse.next()
+}
+
 export const config = {
-  matcher: [
-    '/api/:path*',
-    '/dashboard/:path*',
-    '/agents/:path*',
-    '/queue/:path*',
-    '/memories/:path*',
-  ],
-};
+  matcher: '/api/:path*',
+}

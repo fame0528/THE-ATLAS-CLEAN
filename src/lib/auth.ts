@@ -1,16 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from 'next/server'
 
-export function authMiddleware(request: NextRequest) {
-  const token = request.headers.get("x-atlas-token") ?? request.cookies.get("atlas-token")?.value;
-  const expected = process.env.ATLAS_TOKEN;
+const ATLAS_TOKEN = process.env.ATLAS_TOKEN
 
-  if (!expected) {
-    console.warn("ATLAS_TOKEN not set in environment");
-  }
+export function verifyToken(token: string | null | undefined): boolean {
+  if (!token || !ATLAS_TOKEN) return false
+  return token === ATLAS_TOKEN
+}
 
-  if (!token || token !== expected) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  return NextResponse.next();
+export function getAuthErrorResponse(): NextResponse {
+  return NextResponse.json(
+    { error: 'Unauthorized', message: 'Invalid or missing X-ATLAS-TOKEN' },
+    { status: 401 }
+  )
 }

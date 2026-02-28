@@ -93,6 +93,34 @@ npm run build
 
 TypeScript strict mode enforced. Zero errors allowed.
 
+## Troubleshooting
+
+### `openclaw` command not found
+- Ensure OpenClaw is installed and in your PATH.
+- Verify with `openclaw --version`.
+- If using the Node.js package globally: `npm install -g openclaw`.
+
+### Gateway status returns `{ status: 'unknown' }`
+- Check that the OpenClaw gateway is running: `openclaw gateway status`.
+- Start it: `openclaw gateway start`.
+
+### API 401 Unauthorized
+- Confirm `ATLAS_TOKEN` in `.env.local` matches header.
+- Header must be exactly `X-ATLAS-TOKEN: your-token`.
+- No quotes, no extra spaces.
+
+### TypeScript errors after clone
+- Delete `node_modules` and `.next`, then run `npm install` again.
+- Ensure Node.js version >= 18.
+
+### Port 3050 already in use
+- Change dev port in `package.json`: `"dev": "next dev --port 3051"`.
+- Or kill the process using 3050.
+
+### Logs not appearing
+- Audit logger writes to `logs/audit.log`; ensure `logs/` is writable.
+- Directory created automatically on first write.
+
 ## Deployment
 
 Built for localhost (3050) only. For remote access, set up reverse proxy with TLS and restrict by IP.

@@ -67,7 +67,6 @@ export function clearRateLimit(key?: string) {
 }
 
 // Optional: Periodic cleanup to prevent memory growth
-// Not strictly needed since we prune on each access, but can run as safety
 if (typeof window !== 'undefined') {
   setInterval(() => {
     const now = Date.now();

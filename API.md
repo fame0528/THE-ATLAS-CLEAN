@@ -203,6 +203,37 @@ Trigger an immediate memory index savepoint (QMD flush).
 
 ---
 
+## Examples
+
+### cURL
+
+```bash
+# Status
+curl -H "X-ATLAS-TOKEN: YOUR_TOKEN" http://localhost:3050/api/status
+
+# List agents
+curl -H "X-ATLAS-TOKEN: YOUR_TOKEN" http://localhost:3050/api/agents
+
+# Get agent logs
+curl -H "X-ATLAS-TOKEN: YOUR_TOKEN" http://localhost:3050/api/agents/hermes
+
+# Search memory
+curl -H "X-ATLAS-TOKEN: YOUR_TOKEN" "http://localhost:3050/api/memory/search?q=health"
+
+# Enqueue task
+curl -X POST -H "X-ATLAS-TOKEN: YOUR_TOKEN" -H "Content-Type: application/json" \
+  -d '{"agentId":"hermes","task":"Run scan","priority":"high"}' \
+  http://localhost:3050/api/queue
+
+# Restart gateway
+curl -X POST -H "X-ATLAS-TOKEN: YOUR_TOKEN" http://localhost:3050/api/gateway/restart
+
+# Trigger memory index savepoint
+curl -X POST -H "X-ATLAS-TOKEN: YOUR_TOKEN" http://localhost:3050/api/gateway/savepoint
+```
+
+---
+
 ## Authentication Details
 
 Token is a 256-bit random string stored in `.env.local`:
