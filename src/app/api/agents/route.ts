@@ -1,31 +1,35 @@
-import { NextResponse } from 'next/server';
-import { getDB } from '@/lib/db';
-import type { Agent } from '@/types/agent';
+import { NextRequest, NextResponse } from 'next/server'
+import { getDB } from '@/lib/db'
+import { AgentInfo, AgentState } from '@/types/telemetry'
 
-// GET /api/agents
-// Returns list of all agents with their status
-// Protected by middleware (requires X-ATLAS-TOKEN)
-export async function GET() {
-  try {
-    const db = getDB();
-    const agents = db.getAgents() as Agent[];
-
-    // Transform to API format
-    const result = agents.map(agent => ({
-      id: agent.id,
-      role: agent.role,
-      state: agent.state,
-      lastSeen: agent.last_message_at || agent.updated_at || null,
-      workspace: agent.workspace_path,
-      created: agent.created_at || agent.updated_at,
-    }));
-
-    return NextResponse.json({ agents: result });
-  } catch (error) {
-    console.error('Failed to fetch agents:', error);
+export async function GET(request: NextRequest) {
+  const token = request.headers.get('x-atlas-token')
+  const expected = process.env.ATLAS_TOKEN
+  if (expected && token !== expected) {
     return NextResponse.json(
-      { error: 'Failed to fetch agents' },
+      { success: false, error: 'Unauthorized' },
+      { status: 401 }
+    )
+  }
+
+  try {
+    const db = getDB()
+    const agents = db.getAgents()
+
+    const agentInfos: AgentInfo[] = agents.map(a => ({
+      id: a.id,
+      role: a.role,
+      workspacePath: a.workspace_path,
+      lastHeartbeat: a.last_message_at ? new Date(a.last_message_at) : null,
+      state: a.state as AgentState,
+      uptime: 0,
+    }))
+
+    return NextResponse.json({ success: true, data: agentInfos })
+  } catch (error) {
+    return NextResponse.json(
+      { success: false, error: 'Failed to fetch agents' },
       { status: 500 }
-    );
+    )
   }
 }

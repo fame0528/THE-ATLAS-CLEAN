@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createOpenClawAdapter } from '@/lib/openclaw-adapter'
-
-function requireAuth(request: NextRequest): boolean {
-  const token = request.headers.get('x-atlas-token')
-  const expected = process.env.ATLAS_TOKEN
-  return expected ? token === expected : true
-}
+import { getDB } from '@/lib/db'
+import { QueueInfo } from '@/types/telemetry'
 
 export async function GET(request: NextRequest) {
-  if (!requireAuth(request)) {
+  const token = request.headers.get('x-atlas-token')
+  const expected = process.env.ATLAS_TOKEN
+  if (expected && token !== expected) {
     return NextResponse.json(
       { success: false, error: 'Unauthorized' },
       { status: 401 }
@@ -16,16 +13,20 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const adapter = createOpenClawAdapter({
-      gatewayUrl: process.env.OPENCLAW_GATEWAY_URL || 'http://localhost:8080',
-      token: process.env.ATLAS_TOKEN || '',
-    })
+    const db = getDB()
+    const tasks = db.getTasks(1000)
+    const queued = tasks.filter(t => t.status === 'queued')
+    const lastCompleted = tasks.find(t => t.status === 'completed')
 
-    const queue = await adapter.getQueueInfo()
+    const queue: QueueInfo = {
+      deliveryQueueCount: queued.length,
+      lastProcessedId: lastCompleted?.id,
+    }
+
     return NextResponse.json({ success: true, data: queue })
   } catch (error) {
     return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Unknown error' },
+      { success: false, error: 'Failed to fetch queue' },
       { status: 500 }
     )
   }

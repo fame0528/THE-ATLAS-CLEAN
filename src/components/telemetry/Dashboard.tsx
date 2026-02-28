@@ -25,8 +25,8 @@ export default function Dashboard() {
   const fetchAll = async () => {
     try {
       const [statusRes, agentsRes, queueRes, costRes] = await Promise.all([
-        fetch('/api/status'),
-        fetch('/api/agents'),
+        fetch('/api/telemetry/status'),
+        fetch('/api/telemetry/agents'),
         fetch('/api/queue'),
         fetch('/api/cost'),
       ])
