@@ -1,58 +1,43 @@
-import type { Metadata } from 'next';
-import './globals.css';
-import AgentsPanel from '@/components/AgentsPanel';
-import MetricsPanel from '@/components/MetricsPanel';
-import MemorySearch from '@/components/MemorySearch';
-
-export const metadata: Metadata = {
-  title: 'THE ATLAS — Swarm Control',
-  description: 'Local-first control panel for the swarm',
-};
+import MetricsPanel from "@/components/MetricsPanel";
+import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="min-h-screen bg-gray-950 text-gray-100 p-6">
+    <div className="space-y-6">
       <header className="mb-8">
-        <h1 className="text-3xl font-bold text-cyan-400">THE ATLAS</h1>
-        <p className="text-gray-400">Local-First Swarm Control Panel</p>
+        <h1 className="text-3xl font-bold mb-2">THE ATLAS <span className="text-lg font-normal text-gray-400">Clean Rebuild</span></h1>
+        <p className="text-gray-400">Swarm Control Panel — Local-First Dashboard</p>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column: Agents + Metrics */}
-        <div className="lg:col-span-2 space-y-6">
-          <section className="bg-gray-900 rounded-lg p-4 border border-gray-800">
-            <h2 className="text-xl font-semibold mb-4 text-cyan-300">Agents</h2>
-            <AgentsPanel />
-          </section>
+      <section>
+        <h2 className="text-2xl font-semibold mb-4">System Overview</h2>
+        <MetricsPanel />
+      </section>
 
-          <section className="bg-gray-900 rounded-lg p-4 border border-gray-800">
-            <h2 className="text-xl font-semibold mb-4 text-cyan-300">System Metrics</h2>
-            <MetricsPanel />
-          </section>
+      <section>
+        <h2 className="text-2xl font-semibold mb-4">Quick Navigation</h2>
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+          <Link href="/dashboard/agents" className="bg-atlas-surface border border-atlas-border p-4 rounded hover:border-atlas-primary transition-colors">
+            <h3 className="font-semibold">Agents</h3>
+            <p className="text-sm text-atlas-muted">View swarm status</p>
+          </Link>
+          <Link href="/dashboard/tasks" className="bg-atlas-surface border border-atlas-border p-4 rounded hover:border-atlas-primary transition-colors">
+            <h3 className="font-semibold">Tasks</h3>
+            <p className="text-sm text-atlas-muted">Task queue</p>
+          </Link>
+          <Link href="/dashboard/memories" className="bg-atlas-surface border border-atlas-border p-4 rounded hover:border-atlas-primary transition-colors">
+            <h3 className="font-semibold">Memories</h3>
+            <p className="text-sm text-atlas-muted">Search docs</p>
+          </Link>
+          <Link href="/dashboard/actions" className="bg-atlas-surface border border-atlas-border p-4 rounded hover:border-atlas-primary transition-colors">
+            <h3 className="font-semibold">Actions</h3>
+            <p className="text-sm text-atlas-muted">System ops</p>
+          </Link>
         </div>
+      </section>
 
-        {/* Right column: Memory Search + Actions */}
-        <div className="space-y-6">
-          <section className="bg-gray-900 rounded-lg p-4 border border-gray-800">
-            <h2 className="text-xl font-semibold mb-4 text-cyan-300">Memory Search</h2>
-            <MemorySearch />
-          </section>
-
-          <section className="bg-gray-900 rounded-lg p-4 border border-gray-800">
-            <h2 className="text-xl font-semibold mb-4 text-cyan-300">Quick Actions</h2>
-            <p className="text-gray-500 text-sm">Locked — Ares approval required</p>
-            <button
-              disabled
-              className="mt-2 px-4 py-2 bg-gray-700 text-gray-400 rounded cursor-not-allowed"
-            >
-              Restart Gateway
-            </button>
-          </section>
-        </div>
-      </div>
-
-      <footer className="mt-12 text-center text-gray-600 text-sm">
-        <p>Port 3050 • Local-first • Zero secrets in repo</p>
+      <footer className="pt-4 border-t border-gray-700 text-sm text-gray-500">
+        <p>Built with Next.js + TypeScript + Tailwind | Local-first | Agent Optimized</p>
       </footer>
     </div>
   );

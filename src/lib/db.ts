@@ -1,92 +1,67 @@
-import Database from "better-sqlite3";
-import { readFileSync, writeFileSync, existsSync } from "fs";
+import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 
-const DB_PATH = process.env.ATLAS_DB_PATH || join(process.cwd(), "data", "atlas.db");
+const DB_PATH = process.env.ATLAS_DB_PATH || join(process.cwd(), "data", "atlas.json");
 
-export class AtlasDB {
-  private db: Database.Database;
+/**
+ * Simple JSON-based database for MVP
+ * Structure: { agents: {}, tasks: {}, audit_logs: [], memory_index_meta: {} }
+ */
+class AtlasDB {
+  private data: any;
+  private dirty = false;
 
   constructor() {
     // Ensure data directory exists
     const dbDir = require("path").dirname(DB_PATH);
     if (!existsSync(dbDir)) {
-      require("fs").mkdirSync(dbDir, { recursive: true });
+      mkdirSync(dbDir, { recursive: true });
     }
 
-    this.db = new Database(DB_PATH);
-    this.db.pragma("journal_mode = WAL");
-    this.db.pragma("foreign_keys = ON");
-    this.initialize();
+    // Load existing or initialize
+    if (existsSync(DB_PATH)) {
+      try {
+        this.data = JSON.parse(readFileSync(DB_PATH, "utf-8"));
+      } catch {
+        this.data = this.getDefaultData();
+      }
+    } else {
+      this.data = this.getDefaultData();
+      this.save();
+    }
   }
 
-  private initialize() {
-    // Agents table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS agents (
-        id TEXT PRIMARY KEY,
-        role TEXT NOT NULL,
-        state TEXT NOT NULL DEFAULT 'idle',
-        last_message_at TEXT,
-        workspace_path TEXT,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-      );
-    `);
+  private getDefaultData() {
+    return {
+      agents: {},
+      tasks: {},
+      audit_logs: [],
+      memory_index_meta: {
+        id: 1,
+        last_indexed: null,
+        provider: "local",
+        document_count: 0,
+      },
+    };
+  }
 
-    // Tasks table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS tasks (
-        id TEXT PRIMARY KEY,
-        agent_id TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'queued',
-        payload TEXT NOT NULL,
-        created_at TEXT DEFAULT (datetime('now')),
-        completed_at TEXT,
-        error TEXT,
-        FOREIGN KEY (agent_id) REFERENCES agents(id) ON DELETE CASCADE
-      );
-    `);
-
-    // Audit logs table
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS audit_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        timestamp TEXT DEFAULT (datetime('now')),
-        endpoint TEXT NOT NULL,
-        method TEXT NOT NULL,
-        user TEXT,
-        action TEXT NOT NULL,
-        details TEXT
-      );
-    `);
-
-    // Memory index metadata
-    this.db.exec(`
-      CREATE TABLE IF NOT EXISTS memory_index_meta (
-        id INTEGER PRIMARY KEY CHECK (id = 1),
-        last_indexed TEXT,
-        provider TEXT DEFAULT 'local',
-        document_count INTEGER DEFAULT 0
-      );
-    `);
-
-    // Insert default meta row if not exists
-    const meta = this.db.prepare("SELECT * FROM memory_index_meta WHERE id = 1").get();
-    if (!meta) {
-      this.db
-        .prepare("INSERT INTO memory_index_meta (id) VALUES (1)")
-        .run();
+  private save() {
+    if (this.dirty) {
+      writeFileSync(DB_PATH, JSON.stringify(this.data, null, 2));
+      this.dirty = false;
     }
   }
 
   // Agent operations
   getAgents() {
-    return this.db.prepare("SELECT * FROM agents ORDER BY created_at DESC").all();
+    return Object.values(this.data.agents).sort(
+      (a: any, b: any) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
   }
 
   getAgent(id: string) {
-    return this.db.prepare("SELECT * FROM agents WHERE id = ?").get(id);
+    return this.data.agents[id] || null;
   }
 
   upsertAgent(
@@ -96,40 +71,53 @@ export class AtlasDB {
     workspacePath: string,
     lastMessageAt?: string
   ) {
-    const stmt = this.db.prepare(`
-      INSERT INTO agents (id, role, state, workspace_path, last_message_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, datetime('now'))
-      ON CONFLICT(id) DO UPDATE SET
-        role = excluded.role,
-        state = excluded.state,
-        workspace_path = excluded.workspace_path,
-        last_message_at = excluded.last_message_at,
-        updated_at = datetime('now')
-    `);
-    stmt.run(id, role, state, workspacePath, lastMessageAt);
+    const now = new Date().toISOString();
+    this.data.agents[id] = {
+      id,
+      role,
+      state,
+      workspace_path: workspacePath,
+      last_message_at: lastMessageAt,
+      created_at: this.data.agents[id]?.created_at || now,
+      updated_at: now,
+    };
+    this.dirty = true;
+    this.save();
   }
 
   // Task operations
   createTask(agentId: string, payload: object) {
     const id = `task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-    this.db
-      .prepare("INSERT INTO tasks (id, agent_id, status, payload) VALUES (?, ?, ?, ?)")
-      .run(id, agentId, "queued", JSON.stringify(payload));
+    this.data.tasks[id] = {
+      id,
+      agent_id: agentId,
+      status: "queued",
+      payload,
+      created_at: new Date().toISOString(),
+      completed_at: null,
+      error: null,
+    };
+    this.dirty = true;
+    this.save();
     return id;
   }
 
   getTasks(limit = 50) {
-    return this.db
-      .prepare("SELECT * FROM tasks ORDER BY created_at DESC LIMIT ?")
-      .all(limit);
+    const tasks = Object.values(this.data.tasks).sort(
+      (a: any, b: any) =>
+        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+    );
+    return tasks.slice(0, limit);
   }
 
   updateTaskStatus(taskId: string, status: string, error?: string) {
-    const stmt = this.db.prepare(`
-      UPDATE tasks SET status = ?, completed_at = datetime('now'), error = ?
-      WHERE id = ?
-    `);
-    stmt.run(status, error || null, taskId);
+    if (this.data.tasks[taskId]) {
+      this.data.tasks[taskId].status = status;
+      this.data.tasks[taskId].completed_at = new Date().toISOString();
+      if (error) this.data.tasks[taskId].error = error;
+      this.dirty = true;
+      this.save();
+    }
   }
 
   // Audit operations
@@ -140,49 +128,48 @@ export class AtlasDB {
     action: string;
     details?: object;
   }) {
-    this.db
-      .prepare(
-        "INSERT INTO audit_logs (endpoint, method, user, action, details) VALUES (?, ?, ?, ?, ?)"
-      )
-      .run(
-        params.endpoint,
-        params.method,
-        params.user || null,
-        params.action,
-        params.details ? JSON.stringify(params.details) : null
-      );
+    this.data.audit_logs.push({
+      timestamp: new Date().toISOString(),
+      endpoint: params.endpoint,
+      method: params.method,
+      user: params.user?.slice(0, 8) || "unknown",
+      action: params.action,
+      details: params.details || null,
+    });
+    this.dirty = true;
+    this.save();
   }
 
   getAuditLogs(limit = 100) {
-    return this.db
-      .prepare("SELECT * FROM audit_logs ORDER BY timestamp DESC LIMIT ?")
-      .all(limit);
+    return this.data.audit_logs
+      .slice(-limit)
+      .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }
 
   // Memory meta operations
   updateMemoryIndex(lastIndexed: string, count: number) {
-    this.db
-      .prepare(
-        "UPDATE memory_index_meta SET last_indexed = ?, document_count = ? WHERE id = 1"
-      )
-      .run(lastIndexed, count);
+    this.data.memory_index_meta.last_indexed = lastIndexed;
+    this.data.memory_index_meta.document_count = count;
+    this.dirty = true;
+    this.save();
   }
 
   getMemoryIndexMeta() {
-    return this.db.prepare("SELECT * FROM memory_index_meta WHERE id = 1").get();
+    return this.data.memory_index_meta;
   }
 
   // Health check
   health() {
     return {
-      dbSize: this.db.totalChanges,
-      agentsCount: this.db.prepare("SELECT COUNT(*) as c FROM agents").get().c,
-      tasksCount: this.db.prepare("SELECT COUNT(*) as c FROM tasks").get().c,
+      dbSize: JSON.stringify(this.data).length,
+      agentsCount: Object.keys(this.data.agents).length,
+      tasksCount: Object.keys(this.data.tasks).length,
+      auditLogsCount: this.data.audit_logs.length,
     };
   }
 
   close() {
-    this.db.close();
+    this.save();
   }
 }
 

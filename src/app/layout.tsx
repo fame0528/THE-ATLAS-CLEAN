@@ -1,15 +1,22 @@
-import type { Metadata } from "next";
-import ClientLayout from "@/components/ClientLayout";
+import type { Metadata } from 'next'
+import { Inter } from 'next/font/google'
+import './globals.css'
+
+const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: "THE ATLAS — Clean Rebuild",
-  description: "Local-first Mission Control for the Swarm",
-};
+  title: 'THE ATLAS • Clean Control Panel',
+  description: 'Local-first swarm control panel',
+}
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return <ClientLayout>{children}</ClientLayout>;
+}: {
+  children: React.ReactNode
+}) {
+  return (
+    <html lang="en" className="dark">
+      <body className={inter.className}>{children}</body>
+    </html>
+  )
 }

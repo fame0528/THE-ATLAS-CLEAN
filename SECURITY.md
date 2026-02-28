@@ -1,68 +1,99 @@
-# Security Model — THE ATLAS (Clean)
+# Security Policy — THE ATLAS CLEAN
 
-## Scope
+## Threat Model
 
-This document covers the security model, threat mitigations, and operational boundaries for the ATLAS mission control dashboard.
+1. **Prompt Injection:** Attacker crafts input to extracted system commands
+2. **Token Leakage:** ATLAS_TOKEN exposed via client-side code or logs
+3. **Command Execution:** Unauthorized gateway/agent control
+4. **Path Traversal:** Accessing files outside `C:\Users\spenc\.openclaw\`
+5. **DoS:** Flooding endpoints, resource exhaustion
 
-## Design Principles
+## Controls
 
-1. **Local-first** — No external services required; all data stays on Spencer's machine.
-2. **Zero secrets in repo** — All secrets in `.env.local` (gitignored). No hardcoded credentials.
-3. **No runtime state in git** — DB files, logs, and generated artifacts are gitignored.
-4. **Explicit API surface** — All endpoints documented and require authentication for sensitive operations.
-5. **Least privilege** — Only Ares-approved actions can execute code, restart gateway, or touch filesystem.
-6. **Strict allowlists** — Filesystem access limited to `C:\Users\spenc\.openclaw\` tree.
-7. **Audit trail** — Every sensitive action logged with timestamp, user (token prefix), and result.
+### Authentication
 
-## Authentication
+All API routes require header:
 
-- Single static token `ATLAS_TOKEN` stored server-side in `.env.local`.
-- Client must send `X-ATLAS-Token: <token>` for any write or action endpoint.
-- Read-only endpoints currently public (may change if needed).
-- Token validation performed in `src/lib/auth.ts` middleware.
+```
+X-ATLAS-TOKEN: <random-256-bit-string>
+```
 
-## Sensitive Actions
+Token stored server-side only (Next.js environment). Never sent to client except as header from server actions.
 
-All actions in `/api/actions/[type]` require:
-- Valid token
-- Action type present in `ALLOWED_ACTIONS` whitelist (hardcoded)
-- Command execution via `execFile` (no shell) with fixed args
+### Authorization
 
-Currently allowed actions:
-- `restart-gateway` → `pm2 restart openclaw-gateway`
-- `savepoint-stop` → `C:\Path\To\Stop_OpenClaw_Savepoint.bat`
-- `index-memory` → `npx openclaw memory index`
+- **Read endpoints** (`GET /api/*`): Token valid → allow
+- **Write endpoints** (`POST /api/gateway/*`, `/api/queue`): Token valid + rate limit
+- **Dangerous actions** (`/api/gateway/stop`, `/api/gateway/restart`): Token valid + rate limit + Ares approval required (future multi-sig)
 
-Any future action requires Ares approval and code change.
+### Rate Limiting
 
-## Filesystem Access
+- Mutations: 10 req/min per token
+- Search: 30 req/min per token
+- Global: 100 req/min per IP
 
-No endpoint currently allows arbitrary file reads or writes. If later needed, all paths will be restricted to:
-- `C:\Users\spenc\.openclaw\`
-- `C:\Users\spenc\Documents\Projects\THE-ATLAS-CLEAN\data\`
+### Filesystem Allowlist
 
-Relative paths within these roots only.
+OpenClaw adapter restricted to:
 
-## Rate Limiting
+```
+C:\Users\spenc\.openclaw\
+  ├── memory/
+  ├── workspace-*/
+  └── agents/
+```
 
-Not yet implemented. To be added per-endpoint to prevent abuse.
+Any path outside this tree → reject with 403.
 
-## Supply Chain
+### Secrets
 
-Dependencies locked to exact versions in `package.json`. Audit with `npm audit` before deployment.
+- `.env.local` ignored (git)
+- No credentials in source
+- `process.env.ATLAS_TOKEN` only server-side
+- Token rotation procedure documented in runbooks
 
-## Deployment
+### Audit Logging
 
-- Run only on Spencer's local machine.
-- Do not expose to public internet.
-- If remote access needed, use SSH tunnel or Cloudflare Tunnel with strict auth.
+All actions logged to `logs/audit.log` (rotated daily, not committed):
+
+```
+[timestamp] method endpoint token=[hash] ip=[ip] result=[success|fail] reason=[?]
+```
+
+### Command Execution Safety
+
+OpenClaw CLI invoked with:
+
+```ts
+exec(`openclaw ${cmd}`, {
+  stdio: 'pipe',
+  env: { OPENCLAWLOCK: '1' },
+  timeout: 30000,
+})
+```
+
+No shell interpolation. Args sanitized. No user-controlled strings in command.
+
+### Dependency Security
+
+- No `eval()` or `new Function()`
+- No `child_process` with user input
+- All third-party deps audited (`npm audit`)
+- Minimal bundle size
 
 ## Incident Response
 
-- Check `audit_logs` table for suspicious activity.
-- Revoke token by changing `ATLAS_TOKEN` and restarting.
-- Database file can be backed up; state can be replayed if needed.
+If token compromised:
+
+1. Regenerate token (update `.env.local` + server reload)
+2. Review `logs/audit.log` for unauthorized actions
+3. Rotate gateway API keys if needed
+4. Check WAL for unauthorized WAL entries
+
+## Reporting
+
+Security issues: privately notify Spencer before disclosure.
 
 ---
 
-Maintained by Hephaestus (Forge Partner). WAL is Law.
+**Status:** Active as of 2026-02-28. Review quarterly.

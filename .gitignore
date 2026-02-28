@@ -1,38 +1,65 @@
 # Dependencies
 node_modules/
+/.pnp
+.pnp.js
 
-# Build outputs
-.next/
-out/
+# Testing
+/coverage
 
-# Environment and secrets
-.env*.local
-.env
-ATLAS_TOKEN
+# Next.js
+/.next/
+/out/
 
-# Database and runtime state
-data/
-*.db
-*.db-journal
-*.db-wal
+# Production
+/build
 
-# Logs
-logs/
-*.log
-npm-debug.log*
-
-# OS/IDE
+# Misc
 .DS_Store
-.idea/
+*.pem
+
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
+.env
+.env*.local
+.env.*.local
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# IDE
 .vscode/
-*.swp
+.idea/
 
-# Temporary files
-tmp/
+# OS
+Thumbs.db
+
+# Atlas-specific
+*.db
+*.sqlite
+logs/
 temp/
+bridge.md
+nexus-sync.json
+SESSION-STATE.md
 
-# Spreadsheets/exports (if any)
-exports/
+# OpenClaw
+.openclaw/
+workspace-*/
 
-# Ignore the entire node_modules/.cache directory as well
-node_modules/.cache/
+# Secrets
+secrets/
+keys/
+*.key
+*.pem
+
+# Uploads
+public/uploads/
+tmp/
