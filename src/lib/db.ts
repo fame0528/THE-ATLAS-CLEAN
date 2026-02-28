@@ -3,46 +3,44 @@ import { join } from "path";
 
 const DB_PATH = process.env.ATLAS_DB_PATH || join(process.cwd(), "data", "atlas.json");
 
-/**
- * Simple JSON-based database for MVP
- * Structure: { agents: {}, tasks: {}, audit_logs: [], memory_index_meta: {} }
- */
+export interface DBAgent {
+  id: string;
+  role: string;
+  state: string;
+  workspace_path: string;
+  last_message_at?: string | null;
+  updated_at: string;
+  created_at: string;
+}
+
+export interface DBTask {
+  id: string;
+  agent_id: string;
+  status: 'queued' | 'running' | 'completed' | 'error';
+  payload: object;
+  created_at: string;
+  completed_at?: string | null;
+  error?: string | null;
+}
+
 class AtlasDB {
-  private data: any;
+  private data: {
+    agents: Record<string, DBAgent>;
+    tasks: Record<string, DBTask>;
+    audit_logs: any[];
+  };
   private dirty = false;
 
   constructor() {
-    // Ensure data directory exists
     const dbDir = require("path").dirname(DB_PATH);
-    if (!existsSync(dbDir)) {
-      mkdirSync(dbDir, { recursive: true });
-    }
-
-    // Load existing or initialize
+    if (!existsSync(dbDir)) mkdirSync(dbDir, { recursive: true });
     if (existsSync(DB_PATH)) {
-      try {
-        this.data = JSON.parse(readFileSync(DB_PATH, "utf-8"));
-      } catch {
-        this.data = this.getDefaultData();
-      }
-    } else {
-      this.data = this.getDefaultData();
-      this.save();
-    }
+      try { this.data = JSON.parse(readFileSync(DB_PATH, "utf-8")); } catch { this.data = this.getDefault(); }
+    } else { this.data = this.getDefault(); this.save(); }
   }
 
-  private getDefaultData() {
-    return {
-      agents: {},
-      tasks: {},
-      audit_logs: [],
-      memory_index_meta: {
-        id: 1,
-        last_indexed: null,
-        provider: "local",
-        document_count: 0,
-      },
-    };
+  private getDefault() {
+    return { agents: {}, tasks: {}, audit_logs: [] };
   }
 
   private save() {
@@ -52,113 +50,61 @@ class AtlasDB {
     }
   }
 
-  // Agent operations
-  getAgents() {
-    return Object.values(this.data.agents).sort(
-      (a: any, b: any) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
+  getAgents(): DBAgent[] {
+    return Object.values(this.data.agents).sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }
 
-  getAgent(id: string) {
+  getAgent(id: string): DBAgent | null {
     return this.data.agents[id] || null;
   }
 
-  upsertAgent(
-    id: string,
-    role: string,
-    state: string,
-    workspacePath: string,
-    lastMessageAt?: string
-  ) {
+  upsertAgent(id: string, role: string, state: string, workspacePath: string, lastMessageAt?: string) {
     const now = new Date().toISOString();
     this.data.agents[id] = {
-      id,
-      role,
-      state,
-      workspace_path: workspacePath,
-      last_message_at: lastMessageAt,
+      id, role, state, workspace_path: workspacePath, last_message_at: lastMessageAt,
       created_at: this.data.agents[id]?.created_at || now,
       updated_at: now,
     };
-    this.dirty = true;
-    this.save();
+    this.dirty = true; this.save();
   }
 
-  // Task operations
-  createTask(agentId: string, payload: object) {
+  createTask(agentId: string, payload: object): string {
     const id = `task_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-    this.data.tasks[id] = {
-      id,
-      agent_id: agentId,
-      status: "queued",
-      payload,
-      created_at: new Date().toISOString(),
-      completed_at: null,
-      error: null,
-    };
-    this.dirty = true;
-    this.save();
+    this.data.tasks[id] = { id, agent_id: agentId, status: "queued", payload, created_at: new Date().toISOString() };
+    this.dirty = true; this.save();
     return id;
   }
 
-  getTasks(limit = 50) {
-    const tasks = Object.values(this.data.tasks).sort(
-      (a: any, b: any) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-    );
+  getTasks(limit = 50): DBTask[] {
+    const tasks = Object.values(this.data.tasks).sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     return tasks.slice(0, limit);
   }
 
-  updateTaskStatus(taskId: string, status: string, error?: string) {
+  updateTaskStatus(taskId: string, status: DBTask['status'], error?: string) {
     if (this.data.tasks[taskId]) {
       this.data.tasks[taskId].status = status;
       this.data.tasks[taskId].completed_at = new Date().toISOString();
       if (error) this.data.tasks[taskId].error = error;
-      this.dirty = true;
-      this.save();
+      this.dirty = true; this.save();
     }
   }
 
-  // Audit operations
-  logAudit(params: {
-    endpoint: string;
-    method: string;
-    user?: string;
-    action: string;
-    details?: object;
-  }) {
+  logAudit(params: { endpoint: string; method: string; user?: string; action: string; details?: object }) {
     this.data.audit_logs.push({
       timestamp: new Date().toISOString(),
       endpoint: params.endpoint,
       method: params.method,
-      user: params.user?.slice(0, 8) || "unknown",
+      user: params.user?.slice(0,8) || "unknown",
       action: params.action,
       details: params.details || null,
     });
-    this.dirty = true;
-    this.save();
+    this.dirty = true; this.save();
   }
 
-  getAuditLogs(limit = 100) {
-    return this.data.audit_logs
-      .slice(-limit)
-      .sort((a: any, b: any) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  getAuditLogs(limit = 100): any[] {
+    return this.data.audit_logs.slice(-limit).sort((a,b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
   }
 
-  // Memory meta operations
-  updateMemoryIndex(lastIndexed: string, count: number) {
-    this.data.memory_index_meta.last_indexed = lastIndexed;
-    this.data.memory_index_meta.document_count = count;
-    this.dirty = true;
-    this.save();
-  }
-
-  getMemoryIndexMeta() {
-    return this.data.memory_index_meta;
-  }
-
-  // Health check
   health() {
     return {
       dbSize: JSON.stringify(this.data).length,
@@ -167,17 +113,7 @@ class AtlasDB {
       auditLogsCount: this.data.audit_logs.length,
     };
   }
-
-  close() {
-    this.save();
-  }
 }
 
 let dbInstance: AtlasDB | null = null;
-
-export function getDB() {
-  if (!dbInstance) {
-    dbInstance = new AtlasDB();
-  }
-  return dbInstance;
-}
+export function getDB() { if (!dbInstance) dbInstance = new AtlasDB(); return dbInstance; }

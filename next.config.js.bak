@@ -1,0 +1,12 @@
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  serverExternalPackages: ['better-sqlite3'],
+  env: {
+    NEXT_PUBLIC_ATLAS_TOKEN: process.env.ATLAS_TOKEN,
+  },
+  eslint: {
+    ignoreDuringBuilds: true,
+  },
+};
+
+module.exports = nextConfig;
