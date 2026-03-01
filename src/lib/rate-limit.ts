@@ -71,13 +71,13 @@ if (typeof window !== 'undefined') {
   setInterval(() => {
     const now = Date.now();
     const minute = 60 * 1000;
-    for (const [key, timestamps] of window.entries()) {
+    window.forEach((timestamps, key) => {
       const recent = timestamps.filter(t => now - t < minute);
       if (recent.length === 0) {
         window.delete(key);
       } else {
         window.set(key, recent);
       }
-    }
+    });
   }, CLEANUP_INTERVAL_MS);
 }

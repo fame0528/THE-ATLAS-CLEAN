@@ -1,8 +1,3 @@
-export const metadata = {
-  title: 'THE ATLAS - Minimal',
-  description: 'Test build',
-};
-
 export default function RootLayout({
   children,
 }: {
